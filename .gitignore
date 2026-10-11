@@ -1,0 +1,69 @@
+# ==============================================================================
+# Python & Virtual Environments
+# ==============================================================================
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+.venv/
+ENV/
+env.bak/
+venv.bak/
+
+# ==============================================================================
+# Build & Distribution Artifacts
+# ==============================================================================
+build/
+dist/
+*.manifest
+*.spec.bak
+
+# Precompiled binaries in root or temp directories
+*.exe
+*.dll
+*.zip
+*.tar.gz
+
+# Allow bundled helper binaries inside bin/ if desired
+!bin/sing-box.exe
+!bin/wintun.dll
+
+# ==============================================================================
+# User Data, Secrets & Profiles (CRITICAL SECURITY)
+# ==============================================================================
+proxies.dat
+proxies.json
+settings.json
+*.tmp
+*.bak
+*.corrupted.bak
+.migrated
+*.quarantine*
+users/
+
+# ==============================================================================
+# Logs & Diagnostics
+# ==============================================================================
+*.log
+logs/
+
+# ==============================================================================
+# IDEs & Operating System Artifacts
+# ==============================================================================
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+$RECYCLE.BIN/
+.DS_Store
+
+# Temporary review notes
+CODE_FOR_REVIEW.md
+ProxyTUN.spec

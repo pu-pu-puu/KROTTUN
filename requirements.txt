@@ -1,0 +1,7 @@
+pywebview>=5.0.0
+requests>=2.31.0
+pysocks>=1.7.1
+psutil>=5.9.0
+pythonnet>=3.0.0
+clr_loader>=0.2.6
+pyinstaller>=6.0.0
