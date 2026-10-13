@@ -1,7 +1,10 @@
 # 🐾 KROTTUN — L3 TUN Proxy Manager for Windows
 
 <p align="center">
-  <img src="gui/web/krottun_logo_128.png" alt="KROTTUN Logo" width="128" height="128" />
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="gui/web/krottun_banner_dark.png">
+    <img alt="KROTTUN Banner" src="gui/web/krottun_banner_light.png" width="460">
+  </picture>
 </p>
 
 <p align="center">
