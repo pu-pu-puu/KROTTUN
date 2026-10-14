@@ -466,11 +466,28 @@
       gap: 12px;
     }
     .country-code-badge {
+      display: flex;
+      align-items: center;
+      gap: 10px;
       font-size: 26px;
       font-weight: 900;
       letter-spacing: -0.5px;
       color: #ffffff;
       min-width: 44px;
+    }
+    .hero-flag-icon {
+      width: 38px;
+      height: 26px;
+      object-fit: cover;
+      border-radius: 5px;
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.6), 0 0 10px rgba(59, 130, 246, 0.3);
+      border: 1px solid rgba(255, 255, 255, 0.2);
+    }
+    .hero-code-text {
+      font-size: 24px;
+      font-weight: 900;
+      letter-spacing: -0.5px;
+      color: #ffffff;
     }
     .server-name-row {
       display: flex;
@@ -660,13 +677,31 @@
     }
 
     .item-country-badge {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 5px;
       font-size: 11px;
       font-weight: 800;
       background: #0a1e50;
       color: #ffffff;
       padding: 3px 6px;
       border-radius: 6px;
-      border: 1px solid rgba(59, 130, 246, 0.3);
+      border: 1px solid rgba(59, 130, 246, 0.35);
+      min-width: 38px;
+      height: 24px;
+      box-sizing: border-box;
+      flex-shrink: 0;
+    }
+    .flag-icon {
+      width: 18px;
+      height: 12px;
+      object-fit: cover;
+      border-radius: 2px;
+      box-shadow: 0 1px 3px rgba(0, 0, 0, 0.5);
+      display: inline-block;
+      vertical-align: middle;
+      border: 0.5px solid rgba(255, 255, 255, 0.2);
     }
     .item-info {
       display: flex;
@@ -861,6 +896,35 @@
       justify-content: flex-end;
       gap: 8px;
       margin-top: 16px;
+    }
+    .btn-danger {
+      background: linear-gradient(135deg, #dc2626, #ef4444);
+      color: #ffffff;
+      border: 1px solid rgba(239, 68, 68, 0.4);
+      box-shadow: 0 4px 14px rgba(239, 68, 68, 0.35);
+    }
+    .btn-danger:hover {
+      box-shadow: 0 6px 20px rgba(239, 68, 68, 0.6);
+      transform: translateY(-1px);
+    }
+    .delete-icon-box {
+      width: 44px;
+      height: 44px;
+      border-radius: 12px;
+      background: rgba(239, 68, 68, 0.12);
+      border: 1px solid rgba(239, 68, 68, 0.35);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+      box-shadow: 0 0 15px rgba(239, 68, 68, 0.2);
+    }
+    .delete-target-preview {
+      margin-top: 12px;
+      padding: 10px 14px;
+      background: rgba(10, 25, 60, 0.7);
+      border: 1px solid rgba(59, 130, 246, 0.3);
+      border-radius: 12px;
     }
 
     /* Toast Notification */
@@ -1092,7 +1156,8 @@
         <div style="flex: 1;">
           <label class="form-label">Протокол</label>
           <select class="form-select" id="addProto">
-            <option value="socks5">SOCKS5</option>
+            <option value="auto">Auto (автоопределение)</option>
+            <option value="socks5" selected>SOCKS5</option>
             <option value="http">HTTP</option>
           </select>
         </div>
@@ -1123,6 +1188,36 @@
       <div class="modal-actions">
         <button class="action-btn btn-secondary" onclick="closeModals()">Отмена</button>
         <button class="action-btn btn-primary" onclick="submitBulkImport()">Импортировать</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal: Delete Server Confirmation -->
+  <div class="modal-overlay" id="modalDelete">
+    <div class="modal-card" style="width: 380px;">
+      <div style="display: flex; align-items: flex-start; gap: 14px;">
+        <div class="delete-icon-box">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#ef4444" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+            <polyline points="3 6 5 6 21 6"></polyline>
+            <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
+            <line x1="10" y1="11" x2="10" y2="17"></line>
+            <line x1="14" y1="11" x2="14" y2="17"></line>
+          </svg>
+        </div>
+        <div style="flex: 1;">
+          <div class="modal-title" style="margin-bottom: 4px; color: #ffffff;">Удаление сервера</div>
+          <div style="font-size: 12px; color: #94a3b8; line-height: 1.4;">
+            Удалить этот сервер из списка сохранённых узлов?
+          </div>
+          <div class="delete-target-preview">
+            <div id="deleteServerTargetName" style="font-weight: 700; color: #60a5fa; font-size: 13px; display: flex; align-items: center; gap: 6px;">—</div>
+            <div id="deleteServerTargetHost" style="font-family: Consolas, monospace; color: #8ba2d4; font-size: 11px; margin-top: 3px;">—</div>
+          </div>
+        </div>
+      </div>
+      <div class="modal-actions" style="margin-top: 20px;">
+        <button class="action-btn btn-secondary" onclick="closeModals()">Отмена</button>
+        <button class="action-btn btn-danger" id="btnConfirmDelete" onclick="executeDeleteServer()">Удалить сервер</button>
       </div>
     </div>
   </div>
@@ -1222,7 +1317,7 @@
         if (!res || !res.success) {
           isBusy = false;
           applyToggleState(isConnected ? 'active' : 'inactive');
-          if (res && res.error) alert(res.error);
+          if (res && res.error) showToast(res.error);
         }
       } catch (err) {
         isBusy = false;
@@ -1250,42 +1345,72 @@
       document.getElementById('liveTimer').innerText = '00:00:00';
     }
 
+    // Safe DOM helper for rendering country flag image and text badge
+    function renderFlagBadge(container, countryCode, isHero = false) {
+      if (!container) return;
+      while (container.firstChild) {
+        container.removeChild(container.firstChild);
+      }
+      const raw = String(countryCode || 'PX').trim().toUpperCase();
+      const isValidIso = /^[A-Z]{2}$/.test(raw);
+      const isService = /^(LAN|LOC|PX|UNK|—)$/.test(raw);
+      const safeCode = (isValidIso || isService) ? raw : 'PX';
+
+      if (isValidIso && safeCode !== 'PX' && safeCode !== 'LAN') {
+        const img = document.createElement('img');
+        img.className = isHero ? 'hero-flag-icon' : 'flag-icon';
+        img.src = 'https://flagcdn.com/w40/' + safeCode.toLowerCase() + '.png';
+        img.alt = safeCode;
+        img.onerror = function() { this.style.display = 'none'; };
+        container.appendChild(img);
+      }
+
+      const textSpan = document.createElement('span');
+      if (isHero) textSpan.className = 'hero-code-text';
+      textSpan.textContent = safeCode;
+      container.appendChild(textSpan);
+    }
+
     // Server Selection & Card Render
     function updateSelectedServerCard() {
       const p = selectedProxy;
+      const codeEl = document.getElementById('cardCountryCode');
       if (!p) {
-        document.getElementById('cardCountryCode').innerText = '—';
-        document.getElementById('cardServerName').innerText = 'Узел не выбран';
-        document.getElementById('cardServerHost').innerText = 'Выберите узел во вкладке «Серверы»';
+        if (codeEl) renderFlagBadge(codeEl, '—', true);
+        document.getElementById('cardServerName').textContent = 'Узел не выбран';
+        document.getElementById('cardServerHost').textContent = 'Выберите узел во вкладке «Серверы»';
         const b = document.getElementById('cardProtoBadge');
-        b.innerText = 'NONE';
+        b.textContent = 'NONE';
         b.className = 'proto-badge direct';
-        document.getElementById('cardPingBadge').innerText = '— ms';
+        document.getElementById('cardPingBadge').textContent = '— ms';
         return;
       }
 
-      document.getElementById('cardCountryCode').innerText = p.country_code || 'PX';
-      document.getElementById('cardServerName').innerText = p.location_name || 'Proxy Server';
-      document.getElementById('cardServerHost').innerText = `${p.host}:${p.port}`;
+      if (codeEl) {
+        renderFlagBadge(codeEl, p.country_code, true);
+      }
+
+      document.getElementById('cardServerName').textContent = p.location_name || 'Proxy Server';
+      document.getElementById('cardServerHost').textContent = `${p.host}:${p.port}`;
 
       const b = document.getElementById('cardProtoBadge');
-      b.innerText = (p.protocol || 'socks5').toUpperCase();
+      b.textContent = (p.protocol || 'socks5').toUpperCase();
       b.className = 'proto-badge ' + (p.protocol || 'socks5').toLowerCase();
 
       const pingEl = document.getElementById('cardPingBadge');
       if (p.latency_ms !== null && p.latency_ms !== undefined) {
-        pingEl.innerText = `${p.latency_ms} ms`;
+        pingEl.textContent = `${p.latency_ms} ms`;
         pingEl.style.display = 'inline-block';
       } else {
-        pingEl.innerText = '— ms';
+        pingEl.textContent = '— ms';
       }
     }
 
     function renderServersList() {
       const container = document.getElementById('serversListContainer');
       container.innerHTML = '';
-      document.getElementById('serversCountTitle').innerText = `Выбор узла (${proxyList.length})`;
-      document.getElementById('tabServersLabel').innerText = `Серверы (${proxyList.length})`;
+      document.getElementById('serversCountTitle').textContent = `Выбор узла (${proxyList.length})`;
+      document.getElementById('tabServersLabel').textContent = `Серверы (${proxyList.length})`;
 
       proxyList.forEach(p => {
         // Ровно один выбранный узел — исключает одновременную подсветку двух карт
@@ -1310,7 +1435,7 @@
 
         const cBadge = document.createElement('div');
         cBadge.className = 'item-country-badge';
-        cBadge.innerText = p.country_code || 'PX';
+        renderFlagBadge(cBadge, p.country_code, false);
         left.appendChild(cBadge);
 
         const info = document.createElement('div');
@@ -1413,22 +1538,68 @@
       showToast('Строка прокси скопирована в буфер');
     }
 
-    async function deleteServer(id) {
+    let pendingDeleteId = null;
+
+    function deleteServer(id) {
       if (!window.pywebview) return;
       if (isConnected && activeProxy && activeProxy.id === id) {
-        alert('Нельзя удалить активный прокси! Сначала отключите TUN.');
+        showToast('Нельзя удалить активный узел! Сначала отключите TUN.');
         return;
       }
-      if (confirm('Удалить этот сервер из списка?')) {
+      const p = proxyList.find(x => x.id === id);
+      if (!p) return;
+      pendingDeleteId = id;
+
+      const nameEl = document.getElementById('deleteServerTargetName');
+      const hostEl = document.getElementById('deleteServerTargetHost');
+      if (nameEl) {
+        while (nameEl.firstChild) {
+          nameEl.removeChild(nameEl.firstChild);
+        }
+        const rawCode = String(p.country_code || 'PX').trim().toUpperCase();
+        if (/^[A-Z]{2}$/.test(rawCode) && rawCode !== 'PX' && rawCode !== 'LAN') {
+          const img = document.createElement('img');
+          img.className = 'flag-icon';
+          img.src = 'https://flagcdn.com/w40/' + rawCode.toLowerCase() + '.png';
+          img.alt = rawCode;
+          img.onerror = function() { this.style.display = 'none'; };
+          nameEl.appendChild(img);
+        }
+        const label = document.createElement('span');
+        label.textContent = p.location_name || `${p.host}:${p.port}`;
+        nameEl.appendChild(label);
+      }
+      if (hostEl) {
+        hostEl.textContent = `${p.host}:${p.port} • ${(p.protocol || 'socks5').toUpperCase()}`;
+      }
+
+      openDeleteModal();
+    }
+
+    function openDeleteModal() {
+      const el = document.getElementById('modalDelete');
+      if (el) el.classList.add('open');
+    }
+
+    async function executeDeleteServer() {
+      if (!pendingDeleteId || !window.pywebview) return;
+      const id = pendingDeleteId;
+      closeModals();
+      try {
         const res = await window.pywebview.api.delete_proxy(id);
         if (res && res.success) {
-          proxyList = res.proxies;
-          selectedProxy = res.selected_proxy;
+          proxyList = res.proxies || [];
+          selectedProxy = res.selected_proxy || null;
           updateSelectedServerCard();
           renderServersList();
-          showToast('Сервер удален');
+          showToast('Сервер удален из списка');
+        } else if (res && res.error) {
+          showToast('Ошибка удаления: ' + res.error);
         }
+      } catch (err) {
+        showToast('Ошибка: ' + err);
       }
+      pendingDeleteId = null;
     }
 
     async function testSelectedPing() {
@@ -1487,9 +1658,27 @@
     function closeModals() {
       document.getElementById('modalAdd').classList.remove('open');
       document.getElementById('modalImport').classList.remove('open');
+      const delModal = document.getElementById('modalDelete');
+      if (delModal) delModal.classList.remove('open');
+      pendingDeleteId = null;
     }
 
+    // Обработка клика вне модального окна и нажатия Escape
+    document.addEventListener('DOMContentLoaded', () => {
+      document.querySelectorAll('.modal-overlay').forEach(overlay => {
+        overlay.addEventListener('click', (e) => {
+          if (e.target === overlay) closeModals();
+        });
+      });
+      window.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape') closeModals();
+      });
+    });
+
+    let isSubmittingForm = false;
+
     async function submitAddProxy() {
+      if (isSubmittingForm) return;
       const host = document.getElementById('addHost').value.trim();
       const port = parseInt(document.getElementById('addPort').value.trim());
       const proto = document.getElementById('addProto').value;
@@ -1497,35 +1686,46 @@
       const pass = document.getElementById('addPass').value.trim();
 
       if (!host || !port) {
-        alert('Укажите хост и порт');
+        showToast('Укажите хост и порт');
         return;
       }
 
       if (window.pywebview) {
-        const res = await window.pywebview.api.add_proxy(host, port, proto, user, pass);
-        if (res && res.success) {
-          closeModals();
-          refreshState();
-          showToast('Прокси успешно добавлен');
-        } else {
-          alert('Ошибка добавления');
+        try {
+          isSubmittingForm = true;
+          const res = await window.pywebview.api.add_proxy(host, port, proto, user, pass);
+          if (res && res.success) {
+            closeModals();
+            refreshState();
+            showToast('Прокси успешно добавлен');
+          } else {
+            showToast(res && res.error ? res.error : 'Ошибка добавления');
+          }
+        } finally {
+          isSubmittingForm = false;
         }
       }
     }
 
     async function submitBulkImport() {
+      if (isSubmittingForm) return;
       const text = document.getElementById('importText').value.trim();
       if (!text) return;
 
       if (window.pywebview) {
-        const res = await window.pywebview.api.bulk_import(text);
-        if (res && res.success) {
-          closeModals();
-          document.getElementById('importText').value = '';
-          refreshState();
-          showToast(`Импортировано серверов: ${res.count}`);
-        } else {
-          alert('Не удалось распознать прокси');
+        try {
+          isSubmittingForm = true;
+          const res = await window.pywebview.api.bulk_import(text);
+          if (res && res.success) {
+            closeModals();
+            document.getElementById('importText').value = '';
+            refreshState();
+            showToast(`Импортировано серверов: ${res.count}`);
+          } else {
+            showToast(res && res.error ? res.error : 'Не удалось распознать прокси');
+          }
+        } finally {
+          isSubmittingForm = false;
         }
       }
     }

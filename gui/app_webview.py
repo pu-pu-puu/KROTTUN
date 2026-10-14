@@ -5,6 +5,7 @@ import threading
 import subprocess
 from ctypes import wintypes
 from typing import Dict, Any, List, Optional, Tuple
+from concurrent.futures import ThreadPoolExecutor
 
 try:
     import psutil
@@ -16,8 +17,14 @@ import webview
 from core.proxy_model import ProxyItem, parse_bulk_proxies
 from core.singbox_manager import SingBoxManager
 from core.paths import sys_exe
-from core.ip_service import get_current_system_ip, quick_ping_proxy, test_proxy
 from core.admin_utils import is_admin
+from core.ip_service import (
+    get_current_system_ip,
+    quick_ping_proxy,
+    test_proxy,
+    resolve_host_geo,
+    probe_proxy_protocol
+)
 from core.storage import save_proxies, load_proxies, load_settings, save_setting, get_secure_storage_path, StorageError, get_migration_error
 from core.win_job import bind_self_to_job
 
@@ -95,14 +102,101 @@ class ProxyTunBridgeApi:
         self._window = None
 
         # Запуск фонового обновления IP и сторожевого таймера
+        self._geo_pool = ThreadPoolExecutor(max_workers=4, thread_name_prefix="geo_worker")
         self._refresh_ip_async()
         threading.Thread(target=self._watchdog_loop, daemon=True).start()
+
+        # Фоновое доопределение гео для серверов без страны при старте в пуле воркеров
+        unresolved_ids = [p.id for p in self.proxies if not p.country or p.get_country_code() == "PX"]
+        if unresolved_ids:
+            self._geo_pool.submit(self._resolve_proxies_batch_async, unresolved_ids)
 
     def set_window(self, window):
         self._window = window
 
+    def _notify_ui_refresh(self):
+        """Оповещает интерфейс WebView о фоновом обновлении данных прокси."""
+        if self._window and not self._closing:
+            try:
+                self._window.evaluate_js("if (typeof refreshState === 'function') refreshState();")
+            except Exception:
+                pass
+
+    def _resolve_single_proxy_async(self, proxy_id: str):
+        if self._closing:
+            return
+        with self._lock:
+            p = next((x for x in self.proxies if x.id == proxy_id), None)
+            if not p:
+                return
+            host = p.host
+
+        c, cc, city = resolve_host_geo(host, timeout=3.0)
+        if self._closing:
+            return
+
+        with self._lock:
+            if self._closing:
+                return
+            p = next((x for x in self.proxies if x.id == proxy_id), None)
+            if p and (c or (cc and cc != "PX")):
+                p.country = c
+                p.country_code = cc if cc != "PX" else ""
+                p.city = city
+                try:
+                    self._save()
+                except Exception as e:
+                    import logging
+                    logging.getLogger("ProxyTUN").warning("Ошибка сохранения гео в фоне: %s", e)
+        if not self._closing:
+            self._notify_ui_refresh()
+
+    def _resolve_proxies_batch_async(self, proxy_ids: List[str]):
+        updated = False
+
+        def _worker(pid):
+            nonlocal updated
+            if self._closing:
+                return
+            with self._lock:
+                p = next((x for x in self.proxies if x.id == pid), None)
+                if not p:
+                    return
+                host = p.host
+            c, cc, city = resolve_host_geo(host, timeout=3.0)
+            if self._closing:
+                return
+            with self._lock:
+                if self._closing:
+                    return
+                p = next((x for x in self.proxies if x.id == pid), None)
+                if p and (c or (cc and cc != "PX")):
+                    p.country = c
+                    p.country_code = cc if cc != "PX" else ""
+                    p.city = city
+                    updated = True
+
+        for pid in proxy_ids:
+            if self._closing:
+                break
+            _worker(pid)
+
+        if not self._closing and updated:
+            with self._lock:
+                if self._closing:
+                    return
+                try:
+                    self._save()
+                except Exception as e:
+                    import logging
+                    logging.getLogger("ProxyTUN").warning("Ошибка сохранения батча гео: %s", e)
+        if not self._closing:
+            self._notify_ui_refresh()
+
     def _save(self) -> None:
-        """Сохраняет список прокси с блокировкой при ошибках расшифровки (B4)."""
+        """Сохраняет список прокси с блокировкой при ошибках расшифровки (B4) и при закрытии."""
+        if self._closing:
+            return
         if self._storage_error:
             raise StorageError(f"Хранилище заблокировано для защиты данных: {self._storage_error}")
         save_proxies(self.proxies)
@@ -224,6 +318,8 @@ class ProxyTunBridgeApi:
             "protocol": p.protocol,
             "username": p.username,
             "latency_ms": p.latency_ms,
+            "country": p.country,
+            "city": p.city,
             "country_code": p.get_country_code(),
             "location_name": p.get_location_name()
         }
@@ -418,22 +514,56 @@ class ProxyTunBridgeApi:
             }
 
     def add_proxy(self, host: str, port: int, protocol: str, username: str = "", password: str = "") -> Dict[str, Any]:
-        """Добавление нового прокси с валидацией и откатом при сбое сохранения (R4)."""
-        host_clean = host.strip()
+        """Добавление нового прокси с валидацией, автоопределением гео и защитой явного выбора протокола (R4)."""
+        import re
+        host_clean = re.sub(r"[<>&\"\'/\\]", "", host or "").strip()
         if not host_clean:
             return {"success": False, "error": "Хост не может быть пустым."}
-        if not (1 <= int(port) <= 65535):
-            return {"success": False, "error": "Порт должен быть в диапазоне 1-65535."}
+        try:
+            port_num = int(port)
+            if not (1 <= port_num <= 65535):
+                return {"success": False, "error": "Порт должен быть в диапазоне 1-65535."}
+        except (ValueError, TypeError):
+            return {"success": False, "error": "Некорректный номер порта."}
+
+        # Валидация протокола: явный выбор пользователя защищен от автозамены
+        proto_in = (protocol or "socks5").lower().strip()
+        if proto_in not in ("socks5", "http", "auto"):
+            return {"success": False, "error": "Недопустимый протокол. Допустимы: SOCKS5, HTTP, Auto."}
+
+        if proto_in == "auto":
+            # Режим Auto: зондируем сокет, но НЕ сохраняем догадку при неудаче
+            probed = probe_proxy_protocol(host_clean, port_num, timeout=1.5)
+            if probed in ("socks5", "http"):
+                final_proto = probed
+            else:
+                return {
+                    "success": False,
+                    "error": "Не удалось автоматически определить протокол узла (таймаут или сервер не отвечает). Пожалуйста, выберите протокол явно: SOCKS5 или HTTP."
+                }
+        else:
+            # Явный выбор пользователя сохраняется строго как есть
+            final_proto = proto_in
+
+        # Быстрая проверка гео в локальном кэше памяти без сетевых задержек
+        from core.ip_service import _geo_cache
+        cached_geo = _geo_cache.get(host_clean)
+        c = cached_geo[0] if cached_geo else ""
+        cc = cached_geo[1] if cached_geo else ""
+        city = cached_geo[2] if cached_geo else ""
 
         with self._lock:
             prev = list(self.proxies), self.selected_proxy_id
             item = ProxyItem(
                 id=f"p_{int(time.time() * 1000)}_{os.urandom(2).hex()}",
                 host=host_clean,
-                port=int(port),
-                protocol=protocol.lower().strip(),
+                port=port_num,
+                protocol=final_proto,
                 username=username.strip() if username else None,
-                password=password.strip() if password else None
+                password=password.strip() if password else None,
+                country=c,
+                country_code=cc if cc != "PX" else "",
+                city=city
             )
             self.proxies.append(item)
             if not self.selected_proxy_id:
@@ -444,6 +574,10 @@ class ProxyTunBridgeApi:
                 self.proxies, self.selected_proxy_id = prev  # Откат
                 return {"success": False, "error": str(e)}
 
+            # Геоопределение вынесено строго в ограниченный пул воркеров ПОСЛЕ сохранения
+            if not c or cc == "PX":
+                self._geo_pool.submit(self._resolve_single_proxy_async, item.id)
+
             sel = self._get_selected_proxy()
             return {
                 "success": True,
@@ -452,7 +586,7 @@ class ProxyTunBridgeApi:
             }
 
     def bulk_import(self, raw_text: str) -> Dict[str, Any]:
-        """Пакетный импорт списка прокси с откатом при сбое сохранения (R4)."""
+        """Пакетный импорт списка прокси с параллельным гео-определением (R4)."""
         with self._lock:
             items = parse_bulk_proxies(raw_text)
             if not items:
@@ -468,38 +602,55 @@ class ProxyTunBridgeApi:
                 self.proxies, self.selected_proxy_id = prev  # Откат
                 return {"success": False, "error": str(e)}
 
-            return {"success": True, "count": len(items)}
+        # Запускаем пакетное определение гео в пуле воркеров без мутации протоколов
+        self._geo_pool.submit(self._resolve_proxies_batch_async, [p.id for p in items])
+
+        return {"success": True, "count": len(items)}
 
     def ping_proxy(self, proxy_id: str) -> Dict[str, Any]:
-        """Быстрый замер задержки конкретного сервера."""
+        """Быстрый замер задержки конкретного сервера и доопределение гео при необходимости."""
         with self._lock:
             target_proxy = next((p for p in self.proxies if p.id == proxy_id), None)
 
         if target_proxy:
             lat = quick_ping_proxy(target_proxy, timeout=2.5)
+            # Если страна не определена, запустим доопределение
+            if not target_proxy.country or target_proxy.get_country_code() == "PX":
+                self._geo_pool.submit(self._resolve_single_proxy_async, target_proxy.id)
             with self._lock:
                 try:
                     self._save()
-                except Exception:
-                    pass
+                except Exception as e:
+                    import logging
+                    logging.getLogger("ProxyTUN").warning("Ошибка сохранения задержки: %s", e)
             return {"success": True, "latency": lat}
 
         return {"success": False, "latency": None}
 
     def ping_all(self) -> Dict[str, Any]:
-        """Параллельный замер задержки всех серверов."""
-        from concurrent.futures import ThreadPoolExecutor
+        """Параллельный замер задержки всех серверов с доопределением неизвестных гео."""
         with self._lock:
             proxies_copy = list(self.proxies)
 
+        def _ping_and_geo(p):
+            lat = quick_ping_proxy(p, timeout=2.5)
+            if not p.country or p.get_country_code() == "PX":
+                c, cc, city = resolve_host_geo(p.host, timeout=2.0)
+                if c or cc != "PX":
+                    p.country = c
+                    p.country_code = cc if cc != "PX" else ""
+                    p.city = city
+            return lat
+
         with ThreadPoolExecutor(max_workers=8) as executor:
-            list(executor.map(lambda p: quick_ping_proxy(p, timeout=2.5), proxies_copy))
+            list(executor.map(_ping_and_geo, proxies_copy))
 
         with self._lock:
             try:
                 self._save()
-            except Exception:
-                pass
+            except Exception as e:
+                import logging
+                logging.getLogger("ProxyTUN").warning("Ошибка сохранения после ping_all: %s", e)
             return {
                 "success": True,
                 "proxies": [self._proxy_to_dict(p) for p in self.proxies]
@@ -566,6 +717,13 @@ class ProxyTunBridgeApi:
         """Гарантированная остановка сетевой службы при закрытии приложения."""
         with self._lock:
             self._closing = True
+        if hasattr(self, "_geo_pool"):
+            try:
+                self._geo_pool.shutdown(wait=False, cancel_futures=True)
+            except TypeError:
+                self._geo_pool.shutdown(wait=False)
+            except Exception:
+                pass
         with self._op_lock:
             self._sb.stop()
 

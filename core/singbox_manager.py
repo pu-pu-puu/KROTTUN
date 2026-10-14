@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import os
 import sys
 import json
@@ -7,7 +9,7 @@ import socket
 import ipaddress
 import threading
 import logging
-from typing import Optional, List
+from typing import Optional, List, Tuple
 from core.proxy_model import ProxyItem
 from core.admin_utils import is_admin
 from core.win_job import bind_to_lifetime
@@ -126,7 +128,13 @@ class SingBoxManager:
         - Опциональный обход Telegram.exe
         - Уровень логирования 'warn' для защиты приватности
         """
-        proto_type = "socks" if proxy.protocol.lower() == "socks5" else "http"
+        proto = (proxy.protocol or "socks5").lower().strip()
+        if proto == "socks5":
+            proto_type = "socks"
+        elif proto == "http":
+            proto_type = "http"
+        else:
+            raise ValueError(f"Неподдерживаемый протокол прокси: '{proxy.protocol}'. Допустимы только 'socks5' и 'http'.")
 
         outbound_proxy = {
             "type": proto_type,
@@ -200,8 +208,20 @@ class SingBoxManager:
             "dns": {
                 "servers": [
                     {
-                        "tag": "dns-remote",
+                        "tag": "dns-remote-cf",
                         "type": "https",
+                        "server": "1.1.1.1",
+                        "detour": "proxy-out"
+                    },
+                    {
+                        "tag": "dns-remote-google",
+                        "type": "https",
+                        "server": "8.8.8.8",
+                        "detour": "proxy-out"
+                    },
+                    {
+                        "tag": "dns-remote-tcp",
+                        "type": "tcp",
                         "server": "1.1.1.1",
                         "detour": "proxy-out"
                     },
@@ -212,9 +232,18 @@ class SingBoxManager:
                     }
                 ],
                 "rules": [
-                    {"domain": ["localhost"], "server": "dns-direct"},
-                    {"domain_suffix": [".local", ".lan", ".home", ".home.arpa"], "server": "dns-direct"}
+                    {"domain": ["localhost"], "action": "route", "server": "dns-direct"},
+                    {"domain_suffix": [".local", ".lan", ".home", ".home.arpa"], "action": "route", "server": "dns-direct"},
+                    # Tier 1: Cloudflare DoH
+                    {"action": "evaluate", "server": "dns-remote-cf", "tag": "cf_resp"},
+                    {"match_response": "cf_resp", "response_rcode": "NOERROR", "action": "respond"},
+                    # Tier 2: Google DoH
+                    {"action": "evaluate", "server": "dns-remote-google", "tag": "google_resp"},
+                    {"match_response": "google_resp", "response_rcode": "NOERROR", "action": "respond"},
+                    # Tier 3: TCP DNS
+                    {"action": "route", "server": "dns-remote-tcp"}
                 ],
+                "final": "dns-remote-tcp",
                 "strategy": "ipv4_only"
             },
             "inbounds": [
@@ -365,26 +394,39 @@ class SingBoxManager:
 
         return has_ip
 
-    def _probe_tunnel(self, p: subprocess.Popen, deadline: float, endpoints: Optional[List[str]] = None) -> bool:
-        """Проверяет фактическую доступность интернета через поднятый туннель (R2/R6)."""
+    def _probe_tunnel(self, p: subprocess.Popen, deadline: float, endpoints: Optional[List[Tuple[str, str]]] = None) -> bool:
+        """
+        Проверяет доступность интернета через поднятый туннель (R2/R6).
+        Строго различает типы ответов: 204 без редиректа для generate_204 и тело 'success' для Firefox.
+        Исключает ложное срабатывание при перехвате captive portal / заглушкой провайдера.
+        """
         import requests
         targets = endpoints or [
-            "http://cp.cloudflare.com/generate_204",
-            "http://www.gstatic.com/generate_204"
+            ("https://cp.cloudflare.com/generate_204", "204"),
+            ("https://www.gstatic.com/generate_204", "204"),
+            ("http://cp.cloudflare.com/generate_204", "204"),
+            ("http://detectportal.firefox.com/success.txt", "firefox_success"),
         ]
-        s = requests.Session()
-        s.trust_env = False
-        while time.monotonic() < deadline and p.poll() is None:
-            for url in targets:
-                try:
-                    resp = s.get(url, timeout=1.5)
-                    if resp.status_code == 204:
-                        return True
-                except requests.RequestException:
-                    pass
-                except Exception:
-                    pass
-            time.sleep(0.2)
+        with requests.Session() as s:
+            s.trust_env = False
+            while time.monotonic() < deadline and p.poll() is None:
+                for url, check_type in targets:
+                    rem = deadline - time.monotonic()
+                    if rem <= 0.1 or p.poll() is not None:
+                        break
+                    req_timeout = min(1.5, rem)
+                    try:
+                        resp = s.get(url, timeout=req_timeout, allow_redirects=False)
+                        if check_type == "204" and resp.status_code == 204:
+                            return True
+                        elif check_type == "firefox_success" and resp.status_code == 200:
+                            if resp.text.strip() == "success":
+                                return True
+                    except requests.RequestException:
+                        pass
+                    except Exception:
+                        pass
+                time.sleep(0.2)
         return False
 
     def start(self, proxy: ProxyItem, bypass_telegram: bool = False) -> bool:

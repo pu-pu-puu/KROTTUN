@@ -13,10 +13,11 @@
 </p>
 
 <p align="center">
+  <img src="https://img.shields.io/badge/Release-v2.4.0-blueviolet?logo=github" alt="Release v2.4.0" />
   <img src="https://img.shields.io/badge/Platform-Windows%2010%20%7C%2011-0078D6?logo=windows" alt="Platform" />
   <img src="https://img.shields.io/badge/Python-3.10%2B-blue?logo=python" alt="Python" />
   <img src="https://img.shields.io/badge/Driver-Wintun%200.14-orange" alt="Wintun" />
-  <img src="https://img.shields.io/badge/Core-sing--box%201.11-success" alt="sing-box" />
+  <img src="https://img.shields.io/badge/Core-sing--box%201.14-success" alt="sing-box" />
   <img src="https://img.shields.io/badge/UI-Edge%20WebView2-informational" alt="WebView2" />
 </p>
 
@@ -28,7 +29,10 @@
 
 В отличие от стандартных системных прокси Windows (WinINet), которые игнорируются мессенджерами, консольными утилитами и играми:
 * **Весь стек приложений** (браузеры, Telegram, Discord, Git, curl, Steam, игры) начинает работать через прокси без необходимости настраивать каждое приложение отдельно.
-* **Никаких утечек DNS или IPv6**: встроенный резолвер перенаправляет все DNS-запросы в шифрованные DoH (Cloudflare / Google), а IPv6-утечки на dual-stack сетях блокируются.
+* **Никаких утечек DNS или IPv6**: встроенный резолвер перенаправляет все DNS-запросы в шифрованные DoH (Cloudflare / Google) с трехуровневым failover, а IPv6-утечки на dual-stack сетях блокируются.
+* **Геолокация узлов и флаги стран**: автоматическое фоновое определение страны и города по IP/домену с визуальным отображением флагов в списке серверов.
+* **Интеллектуальный автодетект протоколов**: неблокирующее параллельное зондирование сокетов (SOCKS5 / HTTP CONNECT) со строгой RFC-валидацией.
+* **Фирменный Glassmorphism интерфейс**: обновленные модальные окна, замер пинга в реальном времени и телеметрия трафика.
 
 ---
 
