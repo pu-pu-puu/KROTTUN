@@ -992,11 +992,30 @@
       <button class="nav-btn" id="tabServers" onclick="switchTab('servers')">
         <span id="tabServersLabel">Серверы (2)</span>
       </button>
+      <button class="nav-btn" id="tabConnections" onclick="switchTab('connections')"><span>Соединения</span></button>
       <button class="nav-btn" id="tabInfo" onclick="switchTab('info')">
         <span>Инфо / UAC</span>
       </button>
     </div>
 
+    <div style="padding:10px 20px;display:flex;gap:12px;align-items:center;flex-wrap:wrap">
+      <span id="protectionStatus">Защита Windows: проверка состояния</span>
+      <button class="action-btn btn-secondary" onclick="releaseProtection()">Отключить защиту и вернуть интернет</button>
+    </div>
+    <div class="view-content hidden" id="viewConnections">
+      <h2>Соединения</h2>
+      <p id="connectionSource">Источник недоступен</p>
+      <p>Снимки активных соединений могут пропускать короткие подключения. Без расшифровки HTTPS.</p>
+      <div style="display:flex;gap:12px;margin:16px 0">
+        <input id="connectionFilter" placeholder="Фильтр" oninput="renderConnections()" style="min-width:0;flex:1">
+        <button class="action-btn btn-secondary" onclick="connectionPaused=!connectionPaused;this.textContent=connectionPaused?'Продолжить':'Пауза'">Пауза</button>
+        <button class="action-btn btn-secondary" onclick="clearConnections()">Очистить</button>
+      </div>
+      <div style="max-height:350px;overflow:auto"><table style="width:100%;text-align:left;font-size:12px">
+        <thead><tr><th>Время</th><th>Программа</th><th>Адрес</th><th>Протокол</th><th>Маршрут / прокси</th><th>Состояние</th></tr></thead>
+        <tbody id="connectionRows"></tbody>
+      </table><p id="connectionEmpty">История пуста</p></div>
+    </div>
     <!-- ================= 1. VIEW HOME ================= -->
     <div class="view-content" id="viewHome">
       <div class="duration-label">Your Connection Duration</div>
@@ -1240,14 +1259,59 @@
       setTimeout(() => t.classList.remove('show'), 2200);
     }
 
+    let connectionRows = [], connectionCursor = 0, connectionPaused = false, connectionBusy = false;
+    function renderConnections() {
+      const query = document.getElementById('connectionFilter').value.toLowerCase();
+      const body = document.getElementById('connectionRows');
+      body.replaceChildren();
+      connectionRows.filter(row => JSON.stringify(row).toLowerCase().includes(query)).forEach(row => {
+        const tr = document.createElement('tr');
+        [new Date(row.timestamp*1000).toLocaleTimeString(), row.process || '—',
+          (row.destination || row.kind || '—') + (row.port ? ':'+row.port : ''),
+          row.protocol || '—', row.route || row.proxy_id || '—', row.state || '—'].forEach(value => {
+          const cell = document.createElement('td'); cell.textContent = value;
+          cell.style.cssText = 'padding:8px 6px;overflow-wrap:anywhere'; tr.appendChild(cell);
+        });
+        body.appendChild(tr);
+      });
+      document.getElementById('connectionEmpty').hidden = body.children.length > 0;
+    }
+    async function clearConnections() {
+      await window.pywebview.api.clear_connections(); connectionRows=[]; renderConnections();
+    }
+    async function releaseProtection() {
+      const result = await window.pywebview.api.release_protection();
+      if (!result.success) alert(result.error); await refreshState();
+    }
+    setInterval(async () => {
+      if (!window.pywebview || connectionBusy) return;
+      connectionBusy=true;
+      try {
+        const state=await window.pywebview.api.get_state();
+        const labels={unarmed:'снята',blocked:'интернет заблокирован',unknown:'состояние неизвестно — требуется восстановление',connecting:'подключение',switching:'резервирование',protected:'туннель проверен; WFP установлен'};
+        document.getElementById('protectionStatus').textContent='Защита Windows: '+(labels[state.protection] || state.protection);
+        if (!connectionPaused) {
+          const data=await window.pywebview.api.get_connections(connectionCursor);
+          connectionCursor=data.cursor;
+          connectionRows=connectionRows.concat(data.rows).slice(-1000);
+          document.getElementById('connectionSource').textContent=data.source==='unavailable'?'Источник недоступен':'Снимки ядра; максимум 1000 строк в памяти';
+          renderConnections();
+        }
+      } finally { connectionBusy=false; }
+    }, 2000);
+
     // Switch tabs
     function switchTab(tab) {
-      ['Home', 'Servers', 'Info'].forEach(t => {
+      ['Home', 'Servers', 'Info', 'Connections'].forEach(t => {
         document.getElementById('view' + t).classList.add('hidden');
         document.getElementById('tab' + t).classList.remove('active');
       });
 
-      if (tab === 'home') {
+      if (tab === 'connections') {
+        document.getElementById('viewConnections').classList.remove('hidden');
+        document.getElementById('tabConnections').classList.add('active');
+        renderConnections();
+      } else if (tab === 'home') {
         document.getElementById('viewHome').classList.remove('hidden');
         document.getElementById('tabHome').classList.add('active');
       } else if (tab === 'servers') {

@@ -65,6 +65,8 @@ class SingBoxManager:
         self.active_proxy: Optional[ProxyItem] = None
         self.proxy_reachable: bool = False
         self.err_file = None
+        self.protected = False
+        self.on_tunnel_ready = None
 
         # Установка и проверка целостности бинарников
         for fname in PINNED_HASHES:
@@ -199,7 +201,7 @@ class SingBoxManager:
 
         norm_log_path = self.log_path.replace("\\", "/")
 
-        return {
+        config = {
             "log": {
                 "level": "warn",
                 "output": norm_log_path,
@@ -273,6 +275,26 @@ class SingBoxManager:
                 "default_domain_resolver": "dns-direct"
             }
         }
+
+        if getattr(self, "protected", False):
+            # The outer socket is permitted by WFP, never by a broad direct route.
+            ipaddress.ip_address(proxy.host)
+            config["inbounds"][0]["strict_route"] = True
+            config["inbounds"][0]["route_exclude_address"] = ["127.0.0.0/8"]
+            config["route"]["rules"] = [r for r in route_rules if r.get("outbound") != "direct"]
+            config["route"]["rules"].append({"network": "udp", "action": "reject"})
+            config["route"]["final"] = "proxy-out"
+            config["route"].pop("default_domain_resolver", None)
+            config["dns"]["servers"] = [x for x in config["dns"]["servers"] if x["tag"] != "dns-direct"]
+            config["dns"]["rules"] = [x for x in config["dns"]["rules"] if x.get("server") != "dns-direct"]
+            config["outbounds"] = [outbound_proxy]
+            import secrets
+            self.controller_secret = secrets.token_urlsafe(32)
+            self.controller_port = 49152 + secrets.randbelow(16384)
+            config["experimental"] = {"clash_api": {
+                "external_controller": "127.0.0.1:" + str(self.controller_port),
+                "secret": self.controller_secret}}
+        return config
 
     def is_adapter_present(self, name: str = "sing-tun") -> bool:
         """Проверяет наличие сетевого интерфейса через psutil без запуска процессов netsh."""
@@ -513,6 +535,9 @@ class SingBoxManager:
 
             self.stop()
             raise RuntimeError(f"Не удалось инициализировать TUN-адаптер sing-box:\n{err_msg or 'Ошибка запуска службы'}")
+
+        if self.on_tunnel_ready is not None:
+            self.on_tunnel_ready()
 
         # Проверка фактической доступности прокси через поднятый туннель (R2)
         self.proxy_reachable = self._probe_tunnel(p, deadline=time.monotonic() + 6.0)
