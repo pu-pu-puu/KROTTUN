@@ -5,6 +5,7 @@
 База v2.4.0; сохранять Python, pywebview, sing-box. Реальные системные настройки в ходе разработки не изменять.
 
 ## Границы
+Реализованные публичные API: KillSwitch.arm(endpoints, app, interface=None), status(), disarm(); WindowsWfpBackend.replace/read/app_id; ProtectionSession.connect/stop/release; ConnectionJournal.append/read/clear; мост get_connections/clear_connections/release_protection.
 Проверка: `python -m unittest discover -s tests` (база 15 passed). Один файл: `python -m unittest discover -s tests -p test_protection.py`. Установка существующих зависимостей: `python -m pip install -r requirements.txt`. Разрешены только стандартная библиотека и уже имеющиеся зависимости; без новых пакетов. Запуск приложения при разработке не выполнять, поскольку он меняет реальную сеть.
 
 Один исполнитель владеет всей реализацией, поэтому внутренние сигнатуры выбирает согласованно после исследования notes.md.
