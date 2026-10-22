@@ -131,6 +131,36 @@ class LifecycleTests(unittest.TestCase):
         self.assertTrue(session.cancel.is_set())
         self.assertTrue(session.guard.status()['armed'])
 
+    def test_stop_failure_allows_public_bridge_retry(self):
+        import threading
+        from unittest.mock import Mock, patch
+        from core.proxy_model import ProxyItem
+        from gui.app_webview import ProxyTunBridgeApi, TunState
+        session, manager, _, _ = self.session(True)
+        session._guard().arm((), b'verified-engine')
+        manager.stop.side_effect = PermissionError('denied')
+        bridge = ProxyTunBridgeApi.__new__(ProxyTunBridgeApi)
+        bridge._lock = threading.RLock()
+        bridge._op_lock = threading.Lock()
+        bridge._closing = False
+        bridge._state = TunState.RUNNING
+        bridge.is_admin = True
+        bridge.proxies = [ProxyItem('one', '203.0.113.1', 1080)]
+        bridge._get_selected_proxy = lambda: bridge.proxies[0]
+        bridge._protection = session
+        bridge._sb = manager
+        bridge.settings = {}
+        bridge._error_seq = 0
+        bridge._refresh_ip_async = Mock()
+        with patch('gui.app_webview.threading.Thread') as worker:
+            self.assertEqual(bridge.toggle_tun()['state'], 'stopping')
+            scheduled = worker.call_args.kwargs
+            scheduled['target'](*scheduled['args'])
+            self.assertTrue(session.guard.status()['armed'])
+            self.assertEqual(bridge._state, TunState.ERROR)
+            self.assertEqual(bridge._error_seq, 1)
+            self.assertEqual(bridge.toggle_tun()['state'], 'starting')
+
     def test_guard_precedes_tun_and_stop_retains_policy(self):
         from core.proxy_model import ProxyItem
         session,manager,backend,events=self.session(True)

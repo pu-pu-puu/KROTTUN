@@ -321,7 +321,10 @@ class ProxyTunBridgeApi:
                     self._state = TunState.ERROR
                     self._last_error = "Ошибка защиты Windows; подключение остановлено"
                     self._error_seq += 1
-                self._sb.stop()
+                try:
+                    self._sb.stop()
+                except Exception:
+                    self._protection.state = "unknown"
             finally:
                 self._op_lock.release()
 
@@ -488,13 +491,17 @@ class ProxyTunBridgeApi:
                         self._state = TunState.IDLE
                         self._last_error = None
             except Exception as e:
-                self._sb.stop()
                 self._protection.state = "unknown"
                 with self._lock:
                     self._state = TunState.ERROR
-                    self._last_error = "Ошибка установки или проверки защиты Windows; TUN остановлен"
+                    self._last_error = "Ошибка защиты Windows или остановки TUN. Повторите попытку."
                     self._error_seq += 1
                     self.connected_since = None
+                try:
+                    self._sb.stop()
+                except Exception:
+                    # ERROR is already published; retain protection and allow retry.
+                    pass
 
         self._refresh_ip_async()
 
@@ -743,8 +750,10 @@ class ProxyTunBridgeApi:
             except Exception:
                 pass
         with self._op_lock:
-            self._protection.stop()
-            self._journal.clear()
+            try:
+                self._protection.stop()
+            finally:
+                self._journal.clear()
 
 
 _single_instance_mutex = None
