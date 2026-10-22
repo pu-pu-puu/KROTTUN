@@ -53,3 +53,40 @@ No proxy credentials/config, DNS, TUN, packet capture or reboot are involved.
 This is a connectivity smoke, not full leak prevention or release acceptance.
 Independent watchdog mitigates parent failure, but cannot guarantee recovery if
 Windows/BFE fails or the PC loses power. Keep manual recovery instructions offline.
+
+Stage 3 inventory only (no WFP/TUN commit, requires same user's elevation for DPAPI):
+  powershell -NoProfile -ExecutionPolicy Bypass -File D:\Projects\KROTTUN\tools\host-validation\stage3.ps1 -InspectOnly
+
+Stage 3 LIVE (review before first invocation):
+  powershell -NoProfile -ExecutionPolicy Bypass -File D:\Projects\KROTTUN\tools\host-validation\stage3.ps1
+
+Requires exactly one saved EE and one saved US as identified by the production
+get_country_code(), no existing owned policy/recovery marker/core/GUI/sing-tun.
+Saved proxy list/settings are never written. The headless production bridge uses
+in-memory clones, EE first and US reserve. Background IP/geo work is suppressed;
+its real automatic failover watchdog and ConnectionSource remain enabled.
+Reports contain phase, booleans/counts and sanitized error types/native codes;
+no proxy host/IP/ID/credentials or raw connection/state payloads are dumped.
+Production engine logs are redirected to the Windows null device. Production
+recovery marker is created normally and removed only after verified cleanup.
+
+The separate recovery watchdog starts BEFORE binding the parent to the core
+kill-on-close Job Object. IsProcessInJob must prove the watchdog is outside that
+job before any manager start. Recovery target is 100 seconds, not a hard OS/API
+deadline. On expiry the watchdog terminates the verified exact parent, confirms
+exit, waits until sing-box exit and sing-tun absence are verifiable, and only then removes all filters
+in the OWNER sublayer across the six production layers (raw GUID enumeration,
+boot/disabled included, no metadata decoding). Unconfirmed exit keeps retrying;
+other processes are never killed. Residual TUN adapters are never deleted blindly;
+they prevent policy release/marker removal/success until Windows removes them.
+A newly started unrelated sing-box conservatively
+delays release. Normal cleanup first permanently ends startup paths, stops the
+core, verifies exit, then releases policy and signals the independent watchdog.
+
+The test requires baseline connectivity/IP, EE running/reachable and changed
+egress, an actual held TCP connection and live journal snapshot, primary core kill
+with deny policy/new TCP blocked, production automatic US failover/changed egress,
+then exhausted in-memory candidates with ERROR and blocked TCP. IP values remain
+in memory. Missing 10013 is inconclusive/failure, not a leak-proof pass. Cleanup
+requires no owned policy, no TUN and restored TCP. This still does not prove packet
+capture/DNS/reboot/full leak prevention or release acceptance.

@@ -21,5 +21,6 @@
 - Ошибки остановки и ранняя отмена исправлены по ревью, 28 tests проходят; никаких реальных изменений firewall/TUN на хосте не выполняли.
 
 ## Правки без автопилота
+- 2026-10-22 — подготовлен реальный EE/US TUN/failover тест с независимым recovery и scoped raw WFP cleanup; 52 tests OK и safety review. UAC Stage3 отменён Windows до старта Python, живой failover ещё не проверен. Повтор только после нового подтверждения пользователя.
 - 2026-10-22 — исправлен нулевой layerKey перечисления WFP, обнаруженный на native preflight; добавлены host-validation/recovery scripts и тесты watchdog race. Реальный короткий deny-only тест с UAC пройден, правила удалены.
 

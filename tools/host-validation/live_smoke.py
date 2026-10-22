@@ -111,7 +111,7 @@ def stop_exact_parent(identity, process_factory=None):
         if os.path.normcase(os.path.realpath(parent.exe())) != expected:
             return False
         args = parent.cmdline()
-        helper = os.path.normcase(str(Path(__file__).resolve()))
+        helper = os.path.normcase(os.path.abspath(identity.get('helper',str(Path(__file__).resolve()))))
         if not any(os.path.normcase(os.path.abspath(arg)) == helper for arg in args):
             return False
         if not any(args[i:i+2] == ['--run-nonce',identity['nonce']]

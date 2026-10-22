@@ -15,6 +15,9 @@ sys.path.insert(0,str(Path(__file__).resolve().parents[1]/'tools/host-validation
 live_spec = importlib.util.spec_from_file_location('host_live_smoke',Path(__file__).resolve().parents[1]/'tools/host-validation/live_smoke.py')
 live = importlib.util.module_from_spec(live_spec)
 live_spec.loader.exec_module(live)
+stage3_spec = importlib.util.spec_from_file_location('host_proxy_failover',Path(__file__).resolve().parents[1]/'tools/host-validation/proxy_failover.py')
+stage3 = importlib.util.module_from_spec(stage3_spec)
+stage3_spec.loader.exec_module(stage3)
 
 
 class HostPreflightTests(unittest.TestCase):
@@ -214,3 +217,62 @@ class LiveSmokeTests(unittest.TestCase):
         self.assertEqual(actual,expected)
         self.assertEqual(len(actual),14)
         self.assertEqual([c.args[0] for c in backend._call.call_args_list],['FwpmTransactionBegin0','FwpmTransactionCommit0'])
+
+
+class ProxyFailoverTests(unittest.TestCase):
+    def test_residual_tun_prevents_watchdog_release_marker_removal_and_success(self):
+        marker,backend = Mock(),Mock()
+        with patch.object(stage3,'cores_gone',return_value=True),patch.object(stage3,'tun_absent',return_value=False),patch.object(stage3,'raw_cleanup') as cleanup:
+            self.assertFalse(stage3.watchdog_cleanup(backend,marker))
+        cleanup.assert_not_called()
+        marker.unlink.assert_not_called()
+
+    def test_watchdog_cleanup_success_requires_tun_absent_after_release(self):
+        marker,backend = Mock(),Mock()
+        with patch.object(stage3,'cores_gone',return_value=True),patch.object(stage3,'tun_absent',side_effect=[True,False]),patch.object(stage3,'raw_cleanup') as cleanup:
+            self.assertFalse(stage3.watchdog_cleanup(backend,marker))
+        cleanup.assert_called_once_with(backend)
+        marker.unlink.assert_not_called()
+
+    def test_selector_exact_unique_and_clones_without_exposing_secrets(self):
+        from core.proxy_model import ProxyItem
+        ee = ProxyItem('secret-id','secret-host',443,password='secret-password',country_code='EE')
+        us = ProxyItem('secret-id2','secret-host2',443,password='secret-password2',country_code='US')
+        pair,counts = stage3.select_pair([us,ee])
+        self.assertEqual([p.get_country_code() for p in pair],['EE','US'])
+        self.assertIsNot(pair[0],ee)
+        self.assertEqual(counts,{'EE':1,'US':1})
+        pair,counts = stage3.select_pair([ee,ee,us])
+        self.assertIsNone(pair)
+        self.assertNotIn('secret',str(counts))
+
+    def test_raw_cleanup_refuses_release_while_any_core_unconfirmed(self):
+        backend = Mock()
+        with patch.object(stage3,'cores_gone',return_value=False):
+            with self.assertRaises(RuntimeError):
+                stage3.raw_cleanup(backend)
+        backend._call.assert_not_called()
+
+    def test_raw_cleanup_uses_raw_keys_without_metadata_decode(self):
+        backend = Mock()
+        backend.dll.FwpmFilterDeleteByKey0.return_value = 0
+        key = GUID.of(OWNER)
+        with patch.object(stage3,'cores_gone',return_value=True),patch.object(stage3,'raw_keys',side_effect=[[key],[],[]]):
+            stage3.raw_cleanup(backend)
+        backend.read.assert_not_called()
+        backend._decode.assert_not_called()
+        self.assertEqual([c.args[0] for c in backend._call.call_args_list],['FwpmTransactionBegin0','FwpmTransactionCommit0'])
+
+    def test_guard_must_be_ready_before_job_or_manager(self):
+        guard,backend = Mock(),Mock()
+        guard.require_ready.side_effect = RuntimeError('not ready')
+        with patch.object(stage3.smoke,'tcp',return_value='connected'),patch.object(stage3,'exit_ip',return_value='hidden'),patch.object(stage3.smoke,'rehearse'),patch('core.win_job.bind_self_to_job') as bind:
+            result = stage3.exercise([],backend,guard,Mock())
+        self.assertFalse(result['ok'])
+        bind.assert_not_called()
+        guard.finish.assert_called_once()
+
+    def test_report_errors_omit_arbitrary_text(self):
+        result = stage3.smoke.error(RuntimeError('secret-host password secret 0x80320004'))
+        self.assertEqual(result['native_codes'],['0x80320004'])
+        self.assertNotIn('secret',str(result))

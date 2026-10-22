@@ -25,3 +25,15 @@ _owned() перечисляет шесть конкретных layer GUID с с
 UAC live запуск tools/host-validation/stage2.ps1: exit0. Отчёт stage2.json: ok=true, classification=passed, blocked_checks=[firewall-denied-10013], ipv6=unavailable, cleanup_ok=true, restored_tcp=connected, run=90147a2e-4dd4-4980-b6fc-c886614e37d1. До теста TCP 1.1.1.1:443 работал, при production deny-only WFP политике новый connect отвергнут Windows 10013, после удаления собственных правил снова connected. Тестовые правила не оставлены; чужие правила не удалялись.
 
 Это connectivity smoke: IPv4 блокировка и восстановление подтверждены на реальном ПК. IPv6 baseline отсутствовал, тест не засчитан. DNS, существующие TCP/UDP-потоки, TUN, реальные прокси/failover, packet capture, перезапуск и BFE/boot не проверены. Готовность к выпуску по-прежнему не подтверждена. Секреты прокси не читались и в отчёты не выводились.
+
+## Stage 3 — подготовка
+Пользователь: «да, там эстонская и американская прокся». Для теста выбраны EE primary и US reserve; пользовательский список/настройки не переписывать. Прокси читаются только локально из существующего защищённого хранилища; отчёт содержит страны, счётчики и логические результаты, без адресов, идентификаторов и credentials.
+
+Сценарий: реальные TUN + production bridge watchdog, принудительное завершение только тестового ядра, автоматический переход EE → US, отказ всех кандидатов при изменении списка только в памяти, сохранение deny и явное локальное восстановление. Watchdog запускается до Job Object тестового процесса; обязан оставаться вне него. Recovery должен удалять только фильтры OWNER по raw sublayer GUID, не зависеть от разбора metadata и не снимать защиту до подтверждённого завершения тестового ядра. Сначала подготовка, offline tests и независимое ревью; затем UAC запуск.
+
+## Stage 3 — подготовлен, запуск UAC отменён
+Добавлены proxy_failover.py и stage3.ps1 (также InspectOnly). 52 tests OK, независимое ревью после исправления residual-TUN проверки: SAFE FOR BOUNDED LIVE SMOKE. Watchdog не снимает защиту/marker и не сообщает success, пока ядро и sing-tun не исчезнут; начальный собственный policy/TUN/marker отвергаются. Пользовательские настройки/список не переписываются.
+
+Попытка реального запуска stage3.ps1 остановилась в Start-Process -Verb RunAs. Windows: “The operation was canceled by the user.” Elevated Python не стартовал; stage3.json не создан. Ни WFP, ни TUN этим запуском не менялись, доступ к сохранённым прокси в нём не выполнялся. Не повторять UAC автоматически после отмены; требуется новое подтверждение пользователя.
+
+Следующий запуск при подтверждении: `powershell -NoProfile -ExecutionPolicy Bypass -File D:\Projects\KROTTUN\tools\host-validation\stage3.ps1`. Сначала читать sanitized stage3.json; не выводить credentials/полный get_state/engine logs. Сессия ожидания 81684 завершилась exit1.
