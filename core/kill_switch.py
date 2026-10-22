@@ -119,8 +119,18 @@ class WindowsWfpBackend:
             return C.string_at(blob.data,blob.size)
         finally: self.dll.FwpmFreeMemory0(C.byref(ptr))
     def _owned(self,allow_disabled=False):
+        # A non-NULL FWPM_FILTER_ENUM_TEMPLATE0 requires a real layerKey.
+        # Enumerate every production layer separately so boot/disabled filters
+        # remain visible without using an invalid all-zero layer GUID.
+        result=[]
+        for family in (4,6):
+            for layer in ('packet','connect','accept'):
+                result.extend(self._owned_layer(layer+str(family),allow_disabled))
+        return result
+    def _owned_layer(self,layer,allow_disabled=False):
         enum=P(); result=[]
         template=EnumTemplate(); template.flags=0x18; template.action_mask=0xffffffff
+        template.layer=GUID.of(KEYS[layer])
         self._call('FwpmFilterCreateEnumHandle0',self.handle,C.byref(template),C.byref(enum))
         try:
             while True:

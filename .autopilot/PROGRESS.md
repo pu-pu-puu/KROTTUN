@@ -9,6 +9,7 @@
 - Autopilot v2.2.0; ответы кратко, caveman ultra.
 
 ## Не доделано
+- На рабочем ПК по явному разрешению выполнены native abort-only preflight (26 правил) и live deny-only smoke: IPv4 TCP блокируется с 10013, scoped cleanup и возврат TCP подтверждены. IPv6 unavailable; без TUN/прокси/capture. См. `.autopilot/host-validation.md`. 45 tests OK.
 - R03: изолированная Windows VM с packet capture обязательна: native WFP ABI/фильтры, старые соединения, IPv4/IPv6/DNS, падение ядра/GUI/сети, BOOTTIME/BFE, смена интерфейса и reboot. Утечки не доказаны отсутствующими; к выпуску не допускать до проверки.
 - R04/R05: интерактивный UI и live источник `/connections` с поставляемым sing-box не проверены; только mock и static/JS syntax.
 - Чистая установка зависимостей и полный запуск приложения не проверены. Чистый git clone с существующими зависимостями: 28 tests OK.
@@ -20,5 +21,5 @@
 - Ошибки остановки и ранняя отмена исправлены по ревью, 28 tests проходят; никаких реальных изменений firewall/TUN на хосте не выполняли.
 
 ## Правки без автопилота
-—
+- 2026-10-22 — исправлен нулевой layerKey перечисления WFP, обнаруженный на native preflight; добавлены host-validation/recovery scripts и тесты watchdog race. Реальный короткий deny-only тест с UAC пройден, правила удалены.
 
