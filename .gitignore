@@ -67,3 +67,4 @@ $RECYCLE.BIN/
 # Temporary review notes
 CODE_FOR_REVIEW.md
 ProxyTUN.spec
+.autopilot/serve.*
