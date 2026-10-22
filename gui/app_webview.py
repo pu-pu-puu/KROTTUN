@@ -305,7 +305,10 @@ class ProxyTunBridgeApi:
                 if retry and not self._closing and self._state == TunState.RUNNING:
                     current = self._sb.active_proxy.id if self._sb.active_proxy else None
                     with self._lock:
+                        if self._closing or self._state != TunState.RUNNING:
+                            continue
                         candidates = [p for p in self.proxies if p.id != current]
+                        self._protection.cancel.clear()
                         self._state = TunState.STARTING
                     success = self._protection.connect(candidates)
                     with self._lock:
@@ -444,6 +447,7 @@ class ProxyTunBridgeApi:
                 sel = self._get_selected_proxy()
                 if not sel:
                     return {"success": False, "error": "Список серверов пуст. Добавьте прокси!"}
+                self._protection.cancel.clear()
                 self._state = TunState.STARTING
                 target = "start"
 
@@ -505,6 +509,7 @@ class ProxyTunBridgeApi:
             sel = self._get_selected_proxy()
 
             if changed and self._state == TunState.RUNNING and sel:
+                self._protection.cancel.clear()
                 self._state = TunState.STARTING
                 threading.Thread(target=self._do_toggle, args=("start",), daemon=True).start()
 

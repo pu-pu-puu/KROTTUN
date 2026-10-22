@@ -58,7 +58,7 @@ class ProtectionSession:
             self.cache[item.id]=address; item.host=address; snapshots.append(item)
         return snapshots
     def connect(self,proxies):
-        self.cancel.clear(); self.generation+=1; self.state='connecting'
+        self.generation+=1; self.state='connecting'
         candidates=self._snapshot(tuple(proxies))
         self.manager._verify_or_raise()
         app=self._guard().backend.app_id(self.manager.exe_path)

@@ -347,7 +347,7 @@ class SingBoxManager:
 
     def stop(self):
         """Останавливает только свой процесс sing-box с корректной выгрузкой Wintun."""
-        p, self.process = self.process, None
+        p = self.process
         if p and p.poll() is None:
             stopped = False
             try:
@@ -365,6 +365,11 @@ class SingBoxManager:
                         p.wait(timeout=1.0)
                     except Exception:
                         pass
+
+        # Keep ownership and protection intact unless exit is observable.
+        if p is not None and p.poll() is None:
+            raise RuntimeError("sing-box did not exit; protection retained")
+        self.process = None
 
         if self.err_file and not self.err_file.closed:
             try:

@@ -70,6 +70,67 @@ class LifecycleTests(unittest.TestCase):
         session.cancel.wait=lambda seconds:session.cancel.is_set()
         return session,manager,backend,events
 
+    def test_release_retains_guard_and_process_until_confirmed_exit(self):
+        import subprocess
+        from unittest.mock import Mock
+        from core.singbox_manager import SingBoxManager
+        for failure in (PermissionError('denied'), subprocess.TimeoutExpired('engine', 1), None):
+            with self.subTest(failure=type(failure).__name__):
+                session, _, backend, _ = self.session(True)
+                manager = SingBoxManager.__new__(SingBoxManager)
+                process = Mock()
+                process.poll.return_value = None
+                process.terminate.side_effect = failure
+                process.kill.side_effect = failure
+                process.wait.side_effect = failure
+                manager.process = process
+                manager.err_file = None
+                manager.exe_path = 'engine'
+                manager._graceful_stop = Mock(return_value=False)
+                manager.is_adapter_present = Mock(return_value=False)
+                manager.flush_dns = Mock()
+                session.manager = manager
+                session._guard().arm((), b'verified-engine')
+                with self.assertRaises(RuntimeError):
+                    session.release()
+                self.assertIs(manager.process, process)
+                self.assertTrue(session.guard.status()['armed'])
+                process.poll.return_value = 0
+                session.release()
+                self.assertIsNone(manager.process)
+                self.assertEqual(backend.rules, ())
+
+    def test_stop_accepted_before_worker_entry_cancels_start(self):
+        import threading
+        from unittest.mock import Mock, patch
+        from core.proxy_model import ProxyItem
+        from gui.app_webview import ProxyTunBridgeApi, TunState
+        session, manager, _, events = self.session(True)
+        bridge = ProxyTunBridgeApi.__new__(ProxyTunBridgeApi)
+        bridge._lock = threading.RLock()
+        bridge._op_lock = threading.Lock()
+        bridge._closing = False
+        bridge._state = TunState.IDLE
+        bridge.is_admin = True
+        bridge.proxies = [ProxyItem('one', '203.0.113.1', 1080)]
+        bridge._get_selected_proxy = lambda: bridge.proxies[0]
+        bridge._protection = session
+        bridge._sb = manager
+        bridge.settings = {}
+        bridge._error_seq = 0
+        bridge._refresh_ip_async = Mock()
+        session.cancel.set()
+        with patch('gui.app_webview.threading.Thread') as worker:
+            self.assertTrue(bridge.toggle_tun()['success'])
+            self.assertFalse(session.cancel.is_set())
+            self.assertEqual(bridge.toggle_tun()['state'], 'stopping')
+            self.assertTrue(session.cancel.is_set())
+            self.assertEqual(worker.call_count, 1)
+        bridge._do_toggle('start')
+        self.assertEqual([v for k, v in events if k == 'start'], [])
+        self.assertTrue(session.cancel.is_set())
+        self.assertTrue(session.guard.status()['armed'])
+
     def test_guard_precedes_tun_and_stop_retains_policy(self):
         from core.proxy_model import ProxyItem
         session,manager,backend,events=self.session(True)
