@@ -123,10 +123,17 @@ class ProxyTunBridgeApi:
 
     def release_protection(self):
         self._protection.cancel.set()
+        with self._lock:
+            self._ip_gen += 1
+            self.current_system_ip={"ip":"IP не проверен: защита снимается", "country_code":"", "status":"unavailable"}
         with self._op_lock:
             try:
                 self._protection.release()
-                self._state = TunState.IDLE
+                with self._lock:
+                    self._state = TunState.IDLE
+                    self.connected_since=None
+                    self._ip_gen += 1
+                    self.current_system_ip={"ip":"Защита снята: IP не проверен", "country_code":"", "status":"unavailable"}
                 return {"success": True}
             except Exception:
                 return {"success": False, "error": "Не удалось снять защиту Windows; используйте локальное восстановление"}

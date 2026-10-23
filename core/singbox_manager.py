@@ -43,6 +43,40 @@ def _resolve_v4(host: str) -> List[str]:
 
 _console_lock = threading.Lock()
 
+_probe_init_lock = threading.Lock()
+
+
+def _probe_request(url, check_type, timeout):
+    import requests
+    with requests.Session() as session:
+        session.trust_env = False
+        response = session.get(url, timeout=timeout, allow_redirects=False, stream=True)
+        try:
+            if check_type == '204':
+                return response.status_code == 204
+            return response.status_code == 200 and response.raw.read(64,decode_content=True).strip() == b'success'
+        finally:
+            response.close()
+
+
+def _probe_process_main(pipe, targets, deadline, ready):
+    try:
+        if not ready.wait(max(0,deadline-time.monotonic())): return
+        for url, check_type in targets:
+            remaining = deadline-time.monotonic()
+            if remaining <= .05:
+                break
+            try:
+                if _probe_request(url,check_type,min(1.5,remaining)):
+                    pipe.send(time.monotonic() < deadline)
+                    return
+            except Exception:
+                pass
+        pipe.send(False)
+    finally:
+        pipe.close()
+
+
 class SingBoxManager:
     @property
     def interface_name(self) -> str:
@@ -357,6 +391,7 @@ class SingBoxManager:
 
     def stop(self):
         """Останавливает только свой процесс sing-box с корректной выгрузкой Wintun."""
+        self._stop_probe()
         p = self.process
         if p and p.poll() is None:
             stopped = False
@@ -431,40 +466,82 @@ class SingBoxManager:
 
         return has_ip
 
+    def _probe_state(self):
+        with _probe_init_lock:
+            if not hasattr(self,'_probe_gate'):
+                self._probe_gate=threading.Lock()
+                self._probe_cancel=threading.Event()
+                self._probe_generation=0
+        return self._probe_gate
+
+    def _stop_probe(self):
+        gate=self._probe_state()
+        self._probe_cancel.set()
+        self._probe_generation+=1
+        if not gate.acquire(timeout=1.5):
+            raise RuntimeError('Probe shutdown unconfirmed; protection retained')
+        try:
+            orphan=getattr(self,'_probe_orphan',None)
+            if orphan is not None:
+                if orphan.is_alive(): orphan.kill();orphan.join(timeout=.5)
+                if orphan.is_alive(): raise RuntimeError('Probe exit unconfirmed; protection retained')
+                orphan.close();self._probe_orphan=None
+        finally: gate.release()
+
     def _probe_tunnel(self, p: subprocess.Popen, deadline: float, endpoints: Optional[List[Tuple[str, str]]] = None) -> bool:
-        """
-        Проверяет доступность интернета через поднятый туннель (R2/R6).
-        Строго различает типы ответов: 204 без редиректа для generate_204 и тело 'success' для Firefox.
-        Исключает ложное срабатывание при перехвате captive portal / заглушкой провайдера.
-        """
-        import requests
-        targets = endpoints or [
-            ("https://cp.cloudflare.com/generate_204", "204"),
-            ("https://www.gstatic.com/generate_204", "204"),
-            ("http://cp.cloudflare.com/generate_204", "204"),
-            ("http://detectportal.firefox.com/success.txt", "firefox_success"),
-        ]
-        with requests.Session() as s:
-            s.trust_env = False
-            while time.monotonic() < deadline and p.poll() is None:
-                for url, check_type in targets:
-                    rem = deadline - time.monotonic()
-                    if rem <= 0.1 or p.poll() is not None:
-                        break
-                    req_timeout = min(1.5, rem)
-                    try:
-                        resp = s.get(url, timeout=req_timeout, allow_redirects=False)
-                        if check_type == "204" and resp.status_code == 204:
-                            return True
-                        elif check_type == "firefox_success" and resp.status_code == 200:
-                            if resp.text.strip() == "success":
-                                return True
-                    except requests.RequestException:
-                        pass
-                    except Exception:
-                        pass
-                time.sleep(0.2)
-        return False
+        import multiprocessing
+        gate=self._probe_state()
+        if not gate.acquire(blocking=False):
+            return False
+        process=None; receiver=None; sender=None
+        generation=self._probe_generation
+        external=getattr(self,'probe_cancel',None)
+        def valid():
+            return (time.monotonic()<deadline and p.poll() is None
+                and getattr(self,'process',p) is p and generation==self._probe_generation
+                and not self._probe_cancel.is_set() and not (external is not None and external.is_set()))
+        try:
+            if getattr(self,'_probe_orphan',None) is not None: return False
+            if not valid(): return False
+            context=multiprocessing.get_context('spawn')
+            receiver,sender=context.Pipe(duplex=False)
+            targets=endpoints or [('https://cp.cloudflare.com/generate_204','204'),
+                ('https://www.gstatic.com/generate_204','204'),
+                ('http://cp.cloudflare.com/generate_204','204'),
+                ('http://detectportal.firefox.com/success.txt','firefox_success')]
+            ready=context.Event()
+            process=context.Process(target=getattr(self,'_probe_worker_target',_probe_process_main),args=(sender,targets,deadline,ready),daemon=True)
+            process.start();self._probe_orphan=process;sender.close()
+            from types import SimpleNamespace
+            # Child cannot issue a request until assigned to kill-on-close job,
+            # even when binding the GUI itself to a job was unavailable.
+            if not bind_to_lifetime(SimpleNamespace(_handle=process.sentinel)): return False
+            if not valid(): return False
+            ready.set()
+            while valid():
+                if receiver.poll(min(.025,max(0,deadline-time.monotonic()))):
+                    result=receiver.recv()
+                    return result is True and valid()
+                if not process.is_alive(): break
+            return False
+        except (EOFError,OSError):
+            return False
+        finally:
+            try:
+                if process is not None and process.pid is not None:
+                    self._probe_orphan=process
+                    if process.is_alive(): process.terminate()
+                    process.join(timeout=.5)
+                    if process.is_alive(): process.kill();process.join(timeout=.5)
+                    if process.is_alive():
+                        self._probe_orphan=process
+                        raise RuntimeError('Probe exit unconfirmed; protection retained')
+                    process.close()
+                    self._probe_orphan=None
+            finally:
+                if receiver is not None: receiver.close()
+                if sender is not None: sender.close()
+                gate.release()
 
     def start(self, proxy: ProxyItem, bypass_telegram: bool = False) -> bool:
         """Запускает TUN подключение с передачей конфига через stdin и проверкой SHA-256."""
@@ -486,6 +563,8 @@ class SingBoxManager:
         # a crashed core's stale native identity; old process exit is confirmed
         # by stop() before rotating this exact adapter identity.
         self._interface_name='sing-tun-'+uuid.uuid4().hex
+        self._probe_state()
+        self._probe_cancel.clear()
         config_data = self.generate_config(proxy, bypass_telegram=bypass_telegram)
         cfg_bytes = json.dumps(config_data, ensure_ascii=False).encode("utf-8")
 

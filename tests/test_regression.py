@@ -173,6 +173,8 @@ class TestRegressionR2R3(unittest.TestCase):
 
     def test_r2_5_firefox_probe_and_captive_portal(self):
         """R2-5: Firefox probe requires exact 'success' body; captive portal 200 is rejected."""
+        from core.singbox_manager import _probe_request
+        import io
         sm = SingBoxManager.__new__(SingBoxManager)
         mock_proc = MagicMock()
         mock_proc.poll.return_value = None
@@ -181,29 +183,28 @@ class TestRegressionR2R3(unittest.TestCase):
             def __init__(self, code, text):
                 self.status_code = code
                 self.text = text
+                self.raw = MagicMock()
+                self.raw.read.side_effect = lambda *args,**kwargs:text.encode()
+            def close(self): pass
 
         # 1. Body starts with success but is invalid -> REJECTED
         with patch("requests.Session.get", return_value=MockResp(200, "success-but-different-body")):
-            ok = sm._probe_tunnel(mock_proc, deadline=time.monotonic() + 0.3,
-                                  endpoints=[("http://detectportal.firefox.com/success.txt", "firefox_success")])
+            ok = _probe_request("http://detectportal.firefox.com/success.txt", "firefox_success", .3)
             self.assertFalse(ok, "Non-exact success body must be rejected")
 
         # 2. Body is exactly 'success\n' -> ACCEPTED
         with patch("requests.Session.get", return_value=MockResp(200, "success\n")):
-            ok = sm._probe_tunnel(mock_proc, deadline=time.monotonic() + 0.3,
-                                  endpoints=[("http://detectportal.firefox.com/success.txt", "firefox_success")])
+            ok = _probe_request("http://detectportal.firefox.com/success.txt", "firefox_success", .3)
             self.assertTrue(ok, "Exact 'success' body must be accepted")
 
         # 3. Captive portal HTML 200 on generate_204 -> REJECTED
         with patch("requests.Session.get", return_value=MockResp(200, "<html>Portal Login</html>")):
-            ok = sm._probe_tunnel(mock_proc, deadline=time.monotonic() + 0.3,
-                                  endpoints=[("https://cp.cloudflare.com/generate_204", "204")])
+            ok = _probe_request("https://cp.cloudflare.com/generate_204", "204", .3)
             self.assertFalse(ok, "200 on generate_204 endpoint must be rejected")
 
         # 4. Real 204 on HTTPS generate_204 -> ACCEPTED
         with patch("requests.Session.get", return_value=MockResp(204, "")):
-            ok = sm._probe_tunnel(mock_proc, deadline=time.monotonic() + 0.3,
-                                  endpoints=[("https://cp.cloudflare.com/generate_204", "204")])
+            ok = _probe_request("https://cp.cloudflare.com/generate_204", "204", .3)
             self.assertTrue(ok, "204 on HTTPS generate_204 must be accepted")
 
     def test_sanitization_and_lan_code(self):

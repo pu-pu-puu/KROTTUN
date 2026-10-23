@@ -2,7 +2,7 @@
 # KROTTUN
 Windows TUN proxy manager: Python, pywebview, sing-box, Wintun.
 
-Verification: `python -m unittest discover -s tests` — 86 passed, including offline sing-box config check, terminal DOM/isolation behavior and protection-strip state/action/poll-stall regression. The user removed automatic window expansion; its API and obsolete geometry tests were removed. Earlier independent clean clone: 28 passed before host-harness additions.
+Verification: `python -m unittest discover -s tests` — 96 passed, including offline sing-box config check, terminal DOM/isolation, protection-strip polling and lifecycle deadline/DNS/release regressions. The user removed automatic window expansion; its API and obsolete geometry tests were removed. Earlier independent clean clone: 28 passed before host-harness additions.
 `python -m core.kill_switch --help` exits 0; runtime imports verified. Existing dependencies used; clean installation unvalidated.
 Launch: `python main.py` (unverified here; never launched because it changes real network settings).
 
@@ -17,6 +17,7 @@ Authorized host checks: native 26-rule transaction/abort and IPv4 deny-only smok
 TUN aliases rotate per core start only after confirmed stop; readiness, shutdown and exact WFP LUID lookup must use manager.interface_name. Legacy and sing-tun-UUID aliases must be covered by recovery absence checks. find_process=true enables journal process metadata, verified live.
 Native enumeration requires explicit layer GUIDs; zero layerKey fails with FWP_E_LAYER_NOT_FOUND. Preserve BOOTTIME/DISABLED enumeration.
 Connection journal uses snapshots and can miss short-lived connections. See `.autopilot/PROGRESS.md` for unresolved acceptance work.
+Tunnel probes use one killable spawn worker with a job-bound request gate; retain ownership until confirmed exit. Early main.freeze_support must precede app imports. DNS refresh is allowed only without policy; active cache requires matching hostname. Explicit release invalidates IP generation and connected_since. See `.autopilot/review-fixes-2026-10-23.md`; frozen-helper runtime remains unverified.
 Protected IP refresh uses trust_env=False and a four-second UI deadline with stale-result checks; do not reintroduce unarmed-only refresh or inherited Windows proxy settings. Sniff precedes DNS routing; observed hostname enrichments update existing journal rows without destination override.
 Live UiCheck verified protected IP and TLS example.com domain; Windows ProxyEnable remains on and must be treated as a potential browser-side conflict, never silently rewritten. Corrected local build: dist/fixed/KROTTUN.exe; see .autopilot/user-ip-domain-fix.md.
 <!-- autopilot:end -->

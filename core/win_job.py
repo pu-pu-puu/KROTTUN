@@ -8,6 +8,8 @@ _k32.CreateJobObjectW.argtypes = [wintypes.LPVOID, wintypes.LPCWSTR]
 _k32.SetInformationJobObject.argtypes = [wintypes.HANDLE, ctypes.c_int, wintypes.LPVOID, wintypes.DWORD]
 _k32.AssignProcessToJobObject.argtypes = [wintypes.HANDLE, wintypes.HANDLE]
 _k32.GetCurrentProcess.restype = wintypes.HANDLE
+_k32.IsProcessInJob.argtypes = [wintypes.HANDLE,wintypes.HANDLE,ctypes.POINTER(wintypes.BOOL)]
+_k32.IsProcessInJob.restype = wintypes.BOOL
 
 JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE = 0x2000
 JobObjectExtendedLimitInformation = 9
@@ -91,7 +93,13 @@ def bind_to_lifetime(popen) -> bool:
         return False
     try:
         if hasattr(popen, '_handle') and popen._handle:
-            res = _k32.AssignProcessToJobObject(_job, wintypes.HANDLE(int(popen._handle)))
+            handle=wintypes.HANDLE(int(popen._handle))
+            member=wintypes.BOOL()
+            if not _k32.IsProcessInJob(handle,_job,ctypes.byref(member)):
+                return False
+            if member.value:
+                return True
+            res = _k32.AssignProcessToJobObject(_job, handle)
             return bool(res)
     except Exception as e:
         logging.warning("Failed to bind subprocess to Job Object: %s", e)
