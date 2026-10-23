@@ -21,6 +21,7 @@
 - Ошибки остановки, ранней отмены и пересоздания TUN после crash исправлены. После разрешённых host-тестов собственные правила сняты, TUN отсутствует, TCP восстановлен.
 
 ## Правки без автопилота
+- 2026-10-23 — внедрён одобренный ASCII Terminal для журнала, выбор строки/инспектор, реальные счётчики, расширение/восстановление окна с DPI bounds. 87 tests OK, static JS/ID и source review SAFE. Новый EXE dist/terminal/KROTTUN.exe; render/live GUI QA не проводился из-за запрета локального browser render. Сетевые модули не изменялись.
 - 2026-10-23 — исправлены зависший protected IP refresh и отсутствие доменов в журнале; 83 tests OK, ревью и живой UiCheck пройдены. Windows system proxy обнаружен включённым, настройки не менялись. Исправленный EXE: dist/fixed/KROTTUN.exe, детали .autopilot/user-ip-domain-fix.md.
 - 2026-10-23 — исправлен конфликт имени Wintun после crash: отдельный alias на запуск и точный LUID; включён поиск процессов для журнала. Core-crash failover пройден, proxy-outage функционально пройден с inconclusive no-leak verdict. 75 tests OK; дальнейшие живые проверки в этом цикле завершены.
 - 2026-10-22 — подготовлен реальный EE/US TUN/failover тест с независимым recovery и scoped raw WFP cleanup; 52 tests OK и safety review. UAC Stage3 отменён Windows до старта Python, живой failover ещё не проверен. Повтор только после нового подтверждения пользователя.
