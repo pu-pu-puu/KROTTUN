@@ -79,7 +79,7 @@ class ProtectionSession:
             self.state='switching'
             self.journal.append(kind='failover',proxy_id=proxy.id,state='connecting',session=self.generation)
             self.manager.protected=True
-            self.manager.on_tunnel_ready=lambda: self._guard().arm(endpoints,app,self.interface_lookup())
+            self.manager.on_tunnel_ready=lambda: self._guard().arm(endpoints,app,self.interface_lookup(self.manager.interface_name))
             try:
                 self.manager.start(proxy,bypass_telegram=False)
                 if self.cancel.is_set() or not self.manager.proxy_reachable:

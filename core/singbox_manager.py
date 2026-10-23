@@ -9,6 +9,7 @@ import socket
 import ipaddress
 import threading
 import logging
+import uuid
 from typing import Optional, List, Tuple
 from core.proxy_model import ProxyItem
 from core.admin_utils import is_admin
@@ -43,6 +44,12 @@ def _resolve_v4(host: str) -> List[str]:
 _console_lock = threading.Lock()
 
 class SingBoxManager:
+    @property
+    def interface_name(self) -> str:
+        if not getattr(self,'_interface_name',None):
+            self._interface_name='sing-tun-'+uuid.uuid4().hex
+        return self._interface_name
+
     def __init__(self, base_dir: Optional[str] = None):
         if base_dir is None:
             if getattr(sys, 'frozen', False):
@@ -252,7 +259,7 @@ class SingBoxManager:
                 {
                     "type": "tun",
                     "tag": "tun-in",
-                    "interface_name": "sing-tun",
+                    "interface_name": self.interface_name,
                     "address": ["198.18.0.1/30"],
                     "auto_route": True,
                     "strict_route": False,
@@ -271,6 +278,7 @@ class SingBoxManager:
             ],
             "route": {
                 "rules": route_rules,
+                "find_process": True,
                 "auto_detect_interface": True,
                 "default_domain_resolver": "dns-direct"
             }
@@ -296,8 +304,9 @@ class SingBoxManager:
                 "secret": self.controller_secret}}
         return config
 
-    def is_adapter_present(self, name: str = "sing-tun") -> bool:
+    def is_adapter_present(self, name: Optional[str] = None) -> bool:
         """Проверяет наличие сетевого интерфейса через psutil без запуска процессов netsh."""
+        name = self.interface_name if name is None else name
         if psutil is not None:
             try:
                 return name in psutil.net_if_stats()
@@ -381,7 +390,7 @@ class SingBoxManager:
         # Ожидаем полного освобождения драйвера Wintun стеком Windows
         start_wait = time.time()
         while time.time() - start_wait < 2.5:
-            if not self.is_adapter_present("sing-tun"):
+            if not self.is_adapter_present():
                 break
             time.sleep(0.05)
 
@@ -392,7 +401,7 @@ class SingBoxManager:
     def _wait_ready(self, p: subprocess.Popen, timeout: float = 15.0) -> bool:
         """
         Надежная проверка готовности адаптера (M1):
-        Проверка назначения IP-адреса 198.18.0.1 интерфейсу sing-tun и отсутствия ошибок в логе.
+        Проверка IP текущего интерфейса и отсутствия ошибок в логе.
         """
         deadline = time.monotonic() + timeout
         has_ip = False
@@ -401,11 +410,11 @@ class SingBoxManager:
                 return False
 
             if psutil is not None:
-                addrs = psutil.net_if_addrs().get("sing-tun", [])
+                addrs = psutil.net_if_addrs().get(self.interface_name, [])
                 if any(getattr(a, "address", "") == "198.18.0.1" for a in addrs):
                     has_ip = True
                     break
-            elif self.is_adapter_present("sing-tun"):
+            elif self.is_adapter_present():
                 has_ip = True
                 break
 
@@ -466,12 +475,16 @@ class SingBoxManager:
         # Гарантированное ожидание освобождения старого адаптера Wintun
         start_wait = time.time()
         while time.time() - start_wait < 3.0:
-            if not self.is_adapter_present("sing-tun"):
+            if not self.is_adapter_present():
                 break
             time.sleep(0.05)
         else:
             raise RuntimeError("Wintun адаптер ещё не освобождён системой. Подождите пару секунд и повторите.")
 
+        # sing-box derives the Windows adapter GUID from its name. Never reuse
+        # a crashed core's stale native identity; old process exit is confirmed
+        # by stop() before rotating this exact adapter identity.
+        self._interface_name='sing-tun-'+uuid.uuid4().hex
         config_data = self.generate_config(proxy, bypass_telegram=bypass_telegram)
         cfg_bytes = json.dumps(config_data, ensure_ascii=False).encode("utf-8")
 

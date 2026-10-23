@@ -388,11 +388,11 @@ class ProxyTunBridgeApi:
             err_seq = self._error_seq
             proxy_reach = self._sb.proxy_reachable
 
-        # Точный подсчет скорости конкретно интерфейса sing-tun
+        # Точный подсчет скорости текущего интерфейса ядра
         if psutil is not None:
             try:
                 pernic = psutil.net_io_counters(pernic=True)
-                tun_stat = pernic.get("sing-tun") or pernic.get("ProxyTUN")
+                tun_stat = pernic.get(self._sb.interface_name)
                 now_net = tun_stat if (tun_stat and is_run) else psutil.net_io_counters()
                 now_time = time.time()
                 
