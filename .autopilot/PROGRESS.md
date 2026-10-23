@@ -22,6 +22,7 @@
 - Ошибки остановки, ранней отмены и пересоздания TUN после crash исправлены. После разрешённых host-тестов собственные правила сняты, TUN отсутствует, TCP восстановлен.
 
 ## Правки без автопилота
+- 2026-10-23 — выбран вариант 3 блока защиты: сегментированная панель, честные состояния и короткое действие снятия; при unarmed кнопка скрыта. Опрос защиты отделён от журнала, зависший запрос переводит статус в unknown без накопления RPC. 86 tests OK, source review SAFE; dist/protection/KROTTUN.exe. Backend/размер окна/терминальный лог сохранены; render/live GUI QA не выполнялся.
 - 2026-10-23 — по уточнению пользователя убрано оформление всей вкладки и resize API. Терминал изолирован в #terminalLogPane; 85 tests OK, static JS/IDs/CSS isolation и source review SAFE. Новая сборка dist/log-panel/KROTTUN.exe.
 - 2026-10-23 — внедрён одобренный ASCII Terminal для журнала, выбор строки/инспектор, реальные счётчики, расширение/восстановление окна с DPI bounds. 87 tests OK, static JS/ID и source review SAFE. Новый EXE dist/terminal/KROTTUN.exe; render/live GUI QA не проводился из-за запрета локального browser render. Сетевые модули не изменялись.
 - 2026-10-23 — исправлены зависший protected IP refresh и отсутствие доменов в журнале; 83 tests OK, ревью и живой UiCheck пройдены. Windows system proxy обнаружен включённым, настройки не менялись. Исправленный EXE: dist/fixed/KROTTUN.exe, детали .autopilot/user-ip-domain-fix.md.

@@ -974,6 +974,24 @@
     #terminalLogPane #connectionInspectorHost { color:#00e6ee; font-weight:400; user-select:text; }
     #terminalLogPane #connectionInspectorDetails { color:#c8d8ce; user-select:text; }
     #terminalLogPane tr:focus-visible { outline:2px solid #00e6ee; outline-offset:-2px; }
+
+    #protectionStrip { display:grid; grid-template-columns:minmax(0,1.25fr) minmax(0,1fr); flex-shrink:0; margin:7px 0 12px; border:1px solid #31568e; border-radius:12px; background:#041743; color:#e9f1ff; }
+    #protectionStrip .protection-summary { display:flex; align-items:center; gap:10px; padding:12px; min-width:0; }
+    #protectionStrip .protection-shield { width:25px; height:30px; color:#91c9f0; flex-shrink:0; }
+    #protectionStrip .protection-copy { min-width:0; font-size:12px; line-height:1.5; }
+    #protectionStrip strong { display:block; font-size:13px; font-weight:600; }
+    #protectionStrip .protection-state { display:flex; align-items:baseline; gap:6px; margin-top:3px; color:#edc585; }
+    #protectionStrip .protection-dot { width:6px; height:6px; border-radius:50%; background:currentColor; flex-shrink:0; }
+    #protectionStrip[data-state="protected"] .protection-state { color:#78dbb1; }
+    #protectionStrip[data-state="unarmed"] .protection-state { color:#acbdd5; }
+    #protectionStrip[data-state="connecting"] .protection-state, #protectionStrip[data-state="switching"] .protection-state { color:#91b9eb; }
+    #protectionStrip .protection-action { min-width:0; border-left:1px solid #294c7f; padding:10px 12px; display:flex; align-items:center; justify-content:center; flex-direction:column; gap:5px; }
+    #protectionStrip button { width:100%; min-height:34px; background:#061b48; color:#91d0ff; border:1px solid #315b9a; border-radius:8px; padding:7px 8px; font:600 12px "Segoe UI",sans-serif; cursor:pointer; }
+    #protectionStrip button:hover:not(:disabled) { background:#0c285b; border-color:#80b9ff; }
+    #protectionStrip button:disabled { cursor:wait; opacity:.7; }
+    #protectionStrip button:focus-visible { outline:2px solid #91d0ff; outline-offset:3px; }
+    #protectionStrip button[hidden], #protectionStrip p[hidden] { display:none; }
+    #protectionStrip p { color:#91b9eb; font-size:11px; line-height:1.45; text-align:left; width:100%; }
   </style>
 </head>
 <body>
@@ -1022,10 +1040,16 @@
       </button>
     </div>
 
-    <div style="padding:10px 20px;display:flex;gap:12px;align-items:center;flex-wrap:wrap">
-      <span id="protectionStatus">Защита Windows: проверка состояния</span>
-      <button class="action-btn btn-secondary" onclick="releaseProtection()">Отключить защиту и вернуть интернет</button>
-    </div>
+    <section id="protectionStrip" data-state="unknown" aria-label="Защита Windows">
+      <div class="protection-summary">
+        <svg class="protection-shield" viewBox="0 0 28 32" fill="none" aria-hidden="true"><path d="M14 2 25 6v9c0 7-5 12-11 15C8 27 3 22 3 15V6L14 2Z" stroke="currentColor" stroke-width="1.6"/><path d="M14 7 20 9v6c0 4-2 7-6 10-4-3-6-6-6-10V9l6-2Z" stroke="currentColor" stroke-width="1" opacity=".5"/></svg>
+        <div class="protection-copy"><strong>Защита Windows</strong><div class="protection-state"><span class="protection-dot" aria-hidden="true"></span><span id="protectionStatus" role="status" aria-live="polite">Статус неизвестен</span></div></div>
+      </div>
+      <div class="protection-action">
+        <button id="protectionRelease" type="button" onclick="releaseProtection()">Снять защиту</button>
+        <p id="protectionHelper">Проверьте подключение</p>
+      </div>
+    </section>
     <div class="view-content hidden" id="viewConnections">
       <h2>Соединения</h2>
       <p id="connectionSource">Источник недоступен</p>
@@ -1364,26 +1388,60 @@
     async function clearConnections() {
       await window.pywebview.api.clear_connections(); connectionRows=[]; selectedConnectionKey=null; renderConnections();
     }
-    async function releaseProtection() {
-      const result = await window.pywebview.api.release_protection();
-      if (!result.success) alert(result.error); await refreshState();
+    let protectionState='unknown', protectionReleaseBusy=false;
+    function updateProtectionStrip(value) {
+      const states={unarmed:['Снята','Включится при подключении прокси'],protected:['Включена',''],blocked:['Интернет заблокирован','Соединение не установлено'],unknown:['Статус неизвестен','Проверьте подключение'],connecting:['Подключение','Проверяем подключение'],switching:['Переключение','Проверяем резервный сервер']};
+      protectionState=typeof value==='string' && Object.prototype.hasOwnProperty.call(states,value)?value:'unknown';
+      const [label,helper]=states[protectionState];
+      document.getElementById('protectionStrip').setAttribute('data-state',protectionState);
+      document.getElementById('protectionStatus').textContent=label;
+      const button=document.getElementById('protectionRelease');
+      button.hidden=protectionState==='unarmed';button.disabled=protectionReleaseBusy;
+      button.textContent=protectionReleaseBusy?'Снимаем…':'Снять защиту';
+      button.setAttribute('aria-busy',String(protectionReleaseBusy));
+      const hint=document.getElementById('protectionHelper');hint.textContent=helper;hint.hidden=!helper;
     }
-    setInterval(async () => {
-      if (!window.pywebview || connectionBusy) return;
-      connectionBusy=true;
+    async function releaseProtection() {
+      if(protectionReleaseBusy) return;
+      let released=false;
+      protectionReleaseBusy=true;updateProtectionStrip(protectionState);
+      try {
+        const result=await window.pywebview.api.release_protection();
+        if(!result || !result.success) {
+          updateProtectionStrip('unknown');
+          alert((result && result.error) || 'Не удалось снять защиту. Повторите попытку или используйте локальное восстановление.');
+        } else { released=true;updateProtectionStrip('unarmed'); }
+      } catch(error) {
+        updateProtectionStrip('unknown');alert('Не удалось связаться с приложением. Повторите снятие защиты или используйте локальное восстановление.');
+      } finally { protectionReleaseBusy=false;updateProtectionStrip(protectionState); }
+      if(released) await refreshState();
+    }
+    let protectionPollBusy=false;
+    async function pollProtection() {
+      if(!window.pywebview || protectionPollBusy) return;
+      protectionPollBusy=true;
+      let expired=false;
+      const deadline=setTimeout(()=>{expired=true;updateProtectionStrip('unknown');},3500);
       try {
         const state=await window.pywebview.api.get_state();
-        const labels={unarmed:'снята',blocked:'интернет заблокирован',unknown:'состояние неизвестно — требуется восстановление',connecting:'подключение',switching:'резервирование',protected:'туннель проверен; WFP установлен'};
-        document.getElementById('protectionStatus').textContent='Защита Windows: '+(labels[state.protection] || state.protection);
-        if (!connectionPaused) {
-          const data=await window.pywebview.api.get_connections(connectionCursor);
-          connectionCursor=data.cursor;
-          upsertConnections(data.rows);
-          document.getElementById('connectionSource').textContent=data.source==='unavailable'?'Источник недоступен':'Снимки ядра; максимум 1000 строк в памяти';
-          renderConnections();
-        }
-      } finally { connectionBusy=false; }
-    }, 2000);
+        if(!expired) updateProtectionStrip(state.protection);
+      } catch(error) { if(!expired) updateProtectionStrip('unknown'); }
+      finally { clearTimeout(deadline);protectionPollBusy=false; }
+    }
+    async function pollConnections() {
+      if(!window.pywebview || connectionBusy || connectionPaused) return;
+      connectionBusy=true;
+      try {
+        const data=await window.pywebview.api.get_connections(connectionCursor);
+        connectionCursor=data.cursor;
+        upsertConnections(data.rows);
+        document.getElementById('connectionSource').textContent=data.source==='unavailable'?'Источник недоступен':'Снимки ядра; максимум 1000 строк в памяти';
+        renderConnections();
+      } catch(error) { document.getElementById('connectionSource').textContent='Источник недоступен'; }
+      finally { connectionBusy=false; }
+    }
+    setInterval(pollProtection,2000);
+    setInterval(pollConnections,2000);
 
     // Switch tabs
     function switchTab(tab) {
