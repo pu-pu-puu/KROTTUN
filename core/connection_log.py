@@ -4,9 +4,10 @@ import threading
 import time
 import re
 from urllib.parse import urlsplit
+import ipaddress
 
 _FIELDS = frozenset(('kind', 'session', 'proxy_id', 'process', 'destination',
-                     'port', 'protocol', 'route', 'state', 'uploaded', 'downloaded'))
+                     'address', 'connection_key', 'port', 'protocol', 'route', 'state', 'uploaded', 'downloaded'))
 
 def _safe(value):
     text = str(value)
@@ -21,6 +22,16 @@ def _safe(value):
     if "@" in text:
         text = text.rsplit("@", 1)[-1]
     return text[:256]
+
+
+def _hostname(value):
+    try:
+        text=str(value or '')[:1024]
+        host=urlsplit(text if '://' in text else '//'+text).hostname or ''
+        host=host.encode('idna').decode('ascii')
+        return host if len(host)<=253 and re.fullmatch(r'[A-Za-z0-9._-]+',host) else ''
+    except (ValueError,UnicodeError):
+        return ''
 
 class ConnectionJournal:
     """Allowlisted metadata only. Sequence numbers remain monotonic after clear."""
@@ -48,6 +59,10 @@ class ConnectionJournal:
                 else:
                     row[key] = _safe(value)
         with self._lock:
+            if row.get('connection_key'):
+                previous=next((old for old in self._rows if old.get('connection_key')==row['connection_key']),None)
+                if previous is not None:
+                    self._rows.remove(previous)
             self._sequence += 1
             row.update(sequence=self._sequence, timestamp=self._clock())
             self._rows.append(row)
@@ -76,12 +91,16 @@ class ConnectionSource:
     """Authenticated loopback snapshots only; short-lived flows may be absent."""
     def __init__(self, journal):
         self.journal = journal
-        self._seen = set()
+        self._seen = {}
+        self._session = None
 
     def poll(self, manager, session):
         import json
         import urllib.request
         try:
+            if session != self._session:
+                self._seen = {}
+                self._session = session
             port = int(manager.controller_port)
             request = urllib.request.Request('http://127.0.0.1:%d/connections' % port,
                 headers={'Authorization': 'Bearer ' + manager.controller_secret})
@@ -93,17 +112,32 @@ class ConnectionSource:
             rows = json.loads(payload)['connections']
             if not isinstance(rows, list):
                 raise ValueError('invalid snapshot')
-            seen = set()
+            seen = {}
             for row in rows[:1000]:
                 identifier = str(row.get('id', ''))[:128]
-                seen.add(identifier)
-                if identifier in self._seen:
-                    continue
                 metadata = row.get('metadata', {})
+                host = _hostname(metadata.get('host'))
+                try: address = str(ipaddress.ip_address(metadata.get('destinationIP')))
+                except ValueError: address = ''
+                process = _safe(metadata.get('processPath') or metadata.get('process') or 'unavailable')
+                previous=self._seen.get(identifier)
+                if previous:
+                    host=host or previous[0]
+                    address=address or previous[1]
+                    if process=='unavailable': process=previous[2]
+                signature = (host,address,process)
+                seen[identifier] = signature
+                if not identifier or self._seen.get(identifier) == signature:
+                    continue
+                # Stable opaque key supports replacement in the UI when late SNI
+                # enriches an already observed connection; never export raw IDs.
+                import hashlib
+                key=hashlib.sha256((str(session)+':'+identifier).encode()).hexdigest()[:32]
                 self.journal.append(kind='connection', session=session,
+                    connection_key=key,address=address,
                     proxy_id=manager.active_proxy.id if manager.active_proxy else None,
-                    process=metadata.get('processPath') or metadata.get('process') or 'unavailable',
-                    destination=metadata.get('host') or metadata.get('destinationIP') or 'unavailable',
+                    process=process,
+                    destination=host or address or 'unavailable',
                     port=int(metadata.get('destinationPort', 0)), protocol=metadata.get('network', 'unavailable'),
                     route=' / '.join(str(x) for x in row.get('chains', [])[:8]) or 'unavailable',
                     state='observed', uploaded=row.get('upload'), downloaded=row.get('download'))

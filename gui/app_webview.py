@@ -96,7 +96,7 @@ class ProxyTunBridgeApi:
 
         self.is_admin = is_admin()
         self.connected_since: Optional[float] = None
-        self.current_system_ip: Dict[str, Any] = {"ip": "Загрузка...", "country_code": ""}
+        self.current_system_ip: Dict[str, Any] = {"ip": "IP появится после подключения", "country_code": "", "status": "unavailable"}
 
         # Телеметрия скорости
         self.last_net_bytes: Optional[Tuple[int, int]] = None
@@ -241,43 +241,70 @@ class ProxyTunBridgeApi:
                 return {"success": False, "error": str(e)}
             return {"success": True}
 
+    def _ip_context(self):
+        if self._closing:
+            return None
+        protection = self._protection
+        if protection.state == "protected":
+            if (self._state != TunState.RUNNING or protection.cancel.is_set()
+                    or not self._sb.is_running() or not self._sb.proxy_reachable):
+                return None
+            return (protection.generation, self._sb.process, "protected")
+        if protection.state == "unarmed" and self._state == TunState.IDLE:
+            return (protection.generation, None, "unarmed")
+        return None
+
     def _refresh_ip_async(self):
-        if hasattr(self, "_protection") and self._protection.state != "unarmed":
-            return
-
-        """Асинхронный опрос IP с защитой поколения от устаревших ответов."""
+        """Coalesced refresh, with lifecycle checks before request and publication."""
         with self._lock:
+            context = self._ip_context()
+            if context is None:
+                self._ip_gen += 1
+                self.current_system_ip = {"ip": "IP недоступен: туннель не подключён", "country_code": "", "status": "blocked"}
+                return
+            if getattr(self, "_ip_pending", False):
+                self._ip_retry = getattr(self, "_ip_pending_context", None) != context
+                if self._ip_retry:
+                    self.current_system_ip = {"ip": "IP недоступен: предыдущая проверка не завершена", "country_code": "", "status": "unavailable"}
+                return
             self._ip_gen += 1
-            current_gen = self._ip_gen
+            generation = self._ip_gen
+            self._ip_pending = True
+            self._ip_pending_context = context
+            self._ip_retry = False
+            self.current_system_ip = {"ip": "Проверка IP…", "country_code": "", "status": "checking"}
 
-        def _worker():
-            for delay in (0.8, 2.0):
-                time.sleep(delay)
+        def expire():
+            with self._lock:
+                if self._ip_pending and generation == self._ip_gen:
+                    self._ip_gen += 1  # Late query cannot publish after deadline.
+                    self.current_system_ip = {"ip": "IP недоступен: время проверки истекло", "country_code": "", "status": "unavailable"}
+        timer = threading.Timer(4.0, expire)
+        timer.daemon = True
+        timer.start()
+
+        def worker():
+            try:
                 with self._lock:
-                    if current_gen != self._ip_gen or self._closing:
+                    if generation != self._ip_gen or context != self._ip_context():
                         return
-                    is_run = self._sb.is_running()
-
-                data = get_current_system_ip(timeout=3.0)
-                ip_val = data.get("ip", "")
-                if ip_val and ip_val not in ("Unknown", "Не удалось определить"):
-                    country_code = (data.get("country_code") or "").upper().strip()
-                    if not country_code and is_run:
-                        with self._lock:
-                            act = self._sb.active_proxy
-                            if act and act.get_country_code():
-                                country_code = act.get_country_code()
-
-                    with self._lock:
-                        if current_gen == self._ip_gen and not self._closing:
-                            self.current_system_ip = {
-                                "ip": ip_val,
-                                "country_code": country_code,
-                                "country": data.get("country", "")
-                            }
-                    return
-
-        threading.Thread(target=_worker, daemon=True).start()
+                try:
+                    data = get_current_system_ip(timeout=3.0)
+                except Exception:
+                    data = {"ip": "IP недоступен", "country_code": "", "status": "unavailable"}
+                with self._lock:
+                    if generation == self._ip_gen and context == self._ip_context():
+                        self.current_system_ip = data
+            finally:
+                timer.cancel()
+                with self._lock:
+                    self._ip_pending = False
+                    retry = self._ip_retry and not self._closing
+                    if generation == self._ip_gen and context != self._ip_context():
+                        self.current_system_ip = {"ip": "IP не проверен: состояние изменилось", "country_code": "", "status": "unavailable"}
+                if retry:
+                    self._refresh_ip_async()
+        threading.Thread(target=worker, daemon=True).start()
 
     def _watchdog_loop(self):
         next_probe = time.monotonic() + 30
@@ -310,12 +337,15 @@ class ProxyTunBridgeApi:
                         candidates = [p for p in self.proxies if p.id != current]
                         self._protection.cancel.clear()
                         self._state = TunState.STARTING
+                        self._ip_gen += 1
+                        self.current_system_ip = {"ip": "Переключение сервера…", "country_code": "", "status": "unavailable"}
                     success = self._protection.connect(candidates)
                     with self._lock:
                         self._state = TunState.RUNNING if success else TunState.ERROR
                         self._last_error = None if success else "Интернет заблокирован: резервные серверы недоступны"
                         self.connected_since = time.time() if success else None
                         if not success: self._error_seq += 1
+                    self._refresh_ip_async()
             except Exception:
                 with self._lock:
                     self._state = TunState.ERROR
@@ -325,6 +355,7 @@ class ProxyTunBridgeApi:
                     self._sb.stop()
                 except Exception:
                     self._protection.state = "unknown"
+                self._refresh_ip_async()
             finally:
                 self._op_lock.release()
 
@@ -370,6 +401,7 @@ class ProxyTunBridgeApi:
                 "connected_since": self.connected_since,
                 "is_admin": self.is_admin,
                 "system_ip": self.current_system_ip,
+                "network_warning": self._network_warning(),
                 "speed_upload": f"{self.current_upload_mbps:.1f} Mb/s",
                 "speed_download": f"{self.current_download_mbps:.1f} Mb/s",
                 "active_proxy": self._proxy_to_dict(act),
@@ -454,6 +486,8 @@ class ProxyTunBridgeApi:
                 self._state = TunState.STARTING
                 target = "start"
 
+            self._ip_gen += 1
+            self.current_system_ip = {"ip": "IP после подключения" if target == "start" else "Туннель отключён", "country_code": "", "status": "unavailable"}
             threading.Thread(target=self._do_toggle, args=(target,), daemon=True).start()
             return {"success": True, "state": self._state}
 
@@ -696,6 +730,23 @@ class ProxyTunBridgeApi:
         self._refresh_ip_async()
         with self._lock:
             return self.current_system_ip
+
+    def _network_warning(self):
+        # Read only the enable flag; never export configured proxy endpoints.
+        now = time.monotonic()
+        if now-getattr(self,'_proxy_warning_checked',-100)>10:
+            warning = ''
+            try:
+                import winreg
+                with winreg.OpenKey(winreg.HKEY_CURRENT_USER,r'Software\Microsoft\Windows\CurrentVersion\Internet Settings') as key:
+                    enabled,_ = winreg.QueryValueEx(key,'ProxyEnable')
+                if enabled:
+                    warning = 'Включён системный прокси Windows: он может мешать TUN и скрывать имена сайтов. Для TUN отключите прежний прокси Windows или расширение браузера вручную.'
+            except (ImportError,OSError):
+                pass
+            self._proxy_warning_checked = now
+            self._proxy_warning = warning
+        return self._proxy_warning
 
     def copy_proxy_by_id(self, proxy_id: str) -> Dict[str, Any]:
         """Копирует строку прокси в буфер обмена Windows через clip.exe без передачи пароля в JS."""

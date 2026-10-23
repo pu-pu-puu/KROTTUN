@@ -150,6 +150,19 @@ URLs, credentials, proxy fields, interface names, paths and addresses cannot ent
 this schema. Recognized phrases are evidence; generic adapter-create alone still
 does not identify the underlying Windows failure.
 
+Actual UI data flow smoke (no browser/window, no core-kill/exhaustion expansion):
+  powershell -NoProfile -ExecutionPolicy Bypass -File D:\Projects\KROTTUN\tools\host-validation\stage3.ps1 -UsIndex 2 -UiCheck
+
+Uses the reviewed independent recovery/empty-policy/core/GUI/TUN checks. Only the
+constructor's unarmed IP refresh is suppressed; the real healthy protected bridge
+refresh runs with trust_env=False and must yield a valid non-baseline exit. A
+normal certificate-validating Python TLS handshake to example.com exercises real
+DNS and SNI. Its held connection must appear as that observed hostname in the
+production ConnectionSource. Reports contain booleans/counts only, no IPs or raw
+payloads. No HTTP bodies/MITM/reverse lookup/global proxy changes are involved.
+UiCheck ends after this flow and normal verified cleanup. Static HTML/JS checks
+are separate; there is no browser rendering or visual QA claim here.
+
 Complementary proxy-outage test (Core remains the default fault mode):
   powershell -NoProfile -ExecutionPolicy Bypass -File D:\Projects\KROTTUN\tools\host-validation\stage3.ps1 -UsIndex 2 -FaultMode Proxy
 

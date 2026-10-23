@@ -126,6 +126,7 @@ class LifecycleTests(unittest.TestCase):
         bridge._lock = threading.RLock()
         bridge._op_lock = threading.Lock()
         bridge._closing = False
+        bridge._ip_gen = 0
         bridge._state = TunState.IDLE
         bridge.is_admin = True
         bridge.proxies = [ProxyItem('one', '203.0.113.1', 1080)]
@@ -159,6 +160,7 @@ class LifecycleTests(unittest.TestCase):
         bridge._lock = threading.RLock()
         bridge._op_lock = threading.Lock()
         bridge._closing = False
+        bridge._ip_gen = 0
         bridge._state = TunState.RUNNING
         bridge.is_admin = True
         bridge.proxies = [ProxyItem('one', '203.0.113.1', 1080)]
@@ -294,6 +296,9 @@ class ConfigTests(unittest.TestCase):
                 self.assertTrue(config['inbounds'][0]['strict_route'])
                 self.assertEqual(config['route']['final'],'proxy-out')
                 self.assertTrue(config['route']['find_process'])
+                self.assertEqual(config['route']['rules'][0]['action'],'sniff')
+                self.assertEqual(config['route']['rules'][1]['action'],'hijack-dns')
+                self.assertNotIn('override_destination',config['route']['rules'][0])
                 self.assertFalse(any(x.get('detour')=='direct' for x in config['dns']['servers']))
                 self.assertEqual(config['experimental']['clash_api']['external_controller'].split(':')[0],'127.0.0.1')
                 path=os.path.join(directory,'check.json')

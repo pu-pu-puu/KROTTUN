@@ -13,6 +13,7 @@ import time
 import threading
 import uuid
 from unittest.mock import patch
+from contextlib import nullcontext
 
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0,str(ROOT))
@@ -539,7 +540,38 @@ def finalize_verdict(result,restored,watchdog_ok):
     result['classification']='inconclusive' if functional and inconclusive else 'passed' if result['ok'] else 'failed'
 
 
-def exercise(pair,backend,guard,record,fault_mode='Core'):
+def validate_ui_flow(bridge,baseline,record):
+    import ipaddress
+    import ssl
+    # Real bridge worker uses healthy protected routing and trust_env=False.
+    bridge._refresh_ip_async()
+    wait_for(lambda:bridge.current_system_ip.get('status')=='ready',6)
+    current=str(ipaddress.ip_address(bridge.current_system_ip['ip']))
+    record('ui-ip-valid',True)
+    record('ui-ip-differs-baseline',current!=baseline)
+    record('ui-system-proxy-warning',bool(bridge._network_warning()))
+    if current==baseline:
+        raise RuntimeError('UI exit unchanged')
+    # Resolve through real OS/TUN DNS, TLS validates certificate normally.
+    with socket.create_connection(('example.com',443),timeout=3) as connection:
+        with ssl.create_default_context().wrap_socket(connection,server_hostname='example.com'):
+            observed=False
+            count=0
+            for _ in range(10):
+                bridge._source.poll(bridge._sb,bridge._protection.generation)
+                snapshot=bridge._journal.read()
+                rows=[row for row in snapshot['rows'] if row.get('kind')=='connection']
+                count=len(rows)
+                observed=snapshot['source']=='snapshot' and any(row.get('destination')=='example.com' for row in rows)
+                if observed: break
+                time.sleep(.3)
+            record('ui-tls-domain-observed',observed)
+            record('ui-connection-count',count)
+            if not observed:
+                raise RuntimeError('TLS domain not observed')
+
+
+def exercise(pair,backend,guard,record,fault_mode='Core',ui_check=False):
     bridge = None
     capture_patch = None
     signal_safe = False
@@ -567,8 +599,10 @@ def exercise(pair,backend,guard,record,fault_mode='Core'):
         record('watchdog-outside-core-job',True)
         from gui.app_webview import ProxyTunBridgeApi, TunState
         # No saved settings/proxy mutation or background geolocation requests.
-        with patch('gui.app_webview.load_proxies',return_value=pair),patch('gui.app_webview.load_settings',return_value={}),patch.object(ProxyTunBridgeApi,'_refresh_ip_async',return_value=None):
-            bridge = ProxyTunBridgeApi()
+        refresh_context=nullcontext() if ui_check else patch.object(ProxyTunBridgeApi,'_refresh_ip_async',return_value=None)
+        with patch('gui.app_webview.load_proxies',return_value=pair),patch('gui.app_webview.load_settings',return_value={}),refresh_context:
+            with patch.object(ProxyTunBridgeApi,'_refresh_ip_async',return_value=None):
+                bridge = ProxyTunBridgeApi()
             bridge._sb.log_path = os.devnull
             bridge._sb.stderr_path = os.devnull
             enable_debug_config(bridge._sb)
@@ -590,60 +624,64 @@ def exercise(pair,backend,guard,record,fault_mode='Core'):
             record(primary+'-exit-differs-baseline',ee!=baseline)
             if ee==baseline:
                 raise RuntimeError('Egress unchanged')
-            result['phase'] = 'live-connections'
-            with socket.create_connection(('1.1.1.1',443),timeout=3):
-                bridge._source.poll(bridge._sb,bridge._protection.generation)
-                snapshot = bridge._journal.read()
-                rows = [row for row in snapshot['rows'] if row.get('kind')=='connection']
-                record('connections-source-available',snapshot['source']=='snapshot')
-                record('connections-observed',bool(rows))
-                record('connections-count',len(rows))
-                record('connections-process-fields',any(row.get('process') not in (None,'unavailable') for row in rows))
-                if snapshot['source']!='snapshot' or not rows:
-                    raise RuntimeError('Live connection source unavailable')
-                result['phase'] = primary+('-proxy-outage' if fault_mode=='Proxy' else '-core-kill-block')
+            if ui_check:
+                result['phase']='ui-protected-IP-and-TLS-domain'
+                validate_ui_flow(bridge,baseline,record)
+            else:
+                result['phase'] = 'live-connections'
+                with socket.create_connection(('1.1.1.1',443),timeout=3):
+                    bridge._source.poll(bridge._sb,bridge._protection.generation)
+                    snapshot = bridge._journal.read()
+                    rows = [row for row in snapshot['rows'] if row.get('kind')=='connection']
+                    record('connections-source-available',snapshot['source']=='snapshot')
+                    record('connections-observed',bool(rows))
+                    record('connections-count',len(rows))
+                    record('connections-process-fields',any(row.get('process') not in (None,'unavailable') for row in rows))
+                    if snapshot['source']!='snapshot' or not rows:
+                        raise RuntimeError('Live connection source unavailable')
+                    result['phase'] = primary+('-proxy-outage' if fault_mode=='Proxy' else '-core-kill-block')
+                    with bridge._op_lock:
+                        if fault_mode=='Proxy':
+                            inject_proxy_outage(bridge)
+                            record(primary+'-outage-core-alive',bridge._sb.is_running())
+                            record(primary+'-outage-policy-armed',bridge._protection._guard().status()['armed'])
+                            observation = observe_exit_check()
+                            record(primary+'-outage-egress-network-failure',observation=='network-failure')
+                            if not accept_outage_observation(result,primary,observation):
+                                raise RuntimeError('Proxy fault egress success or inconclusive')
+                        else:
+                            kill_owned(bridge._sb)
+                            if not bridge._protection._guard().status()['armed']:
+                                raise RuntimeError('Deny policy absent')
+                            denied = smoke.tcp('1.1.1.1')
+                            record(primary+'-kill-local-deny',denied=='firewall-denied-10013')
+                            if denied!='firewall-denied-10013':
+                                raise RuntimeError('Local deny inconclusive')
+                result['phase'] = reserve+'-automatic-failover'
+                wait_for(lambda:bridge._state==TunState.RUNNING and bridge._sb.is_running() and bridge._sb.active_proxy.id==pair[1].id and bridge._sb.proxy_reachable,45 if fault_mode=='Proxy' else 30,lambda:diagnostics.sample(bridge))
+                us = exit_ip()
+                record(reserve+'-exit-differs-baseline',us!=baseline)
+                record(reserve+'-exit-differs-'+primary,us!=ee)
+                if us==baseline:
+                    raise RuntimeError('Egress unchanged')
+                result['phase'] = 'reserve-exhaustion'
                 with bridge._op_lock:
+                    bridge.proxies = []
                     if fault_mode=='Proxy':
                         inject_proxy_outage(bridge)
-                        record(primary+'-outage-core-alive',bridge._sb.is_running())
-                        record(primary+'-outage-policy-armed',bridge._protection._guard().status()['armed'])
+                        record(reserve+'-outage-core-alive',bridge._sb.is_running())
+                        record(reserve+'-outage-policy-armed',bridge._protection._guard().status()['armed'])
                         observation = observe_exit_check()
-                        record(primary+'-outage-egress-network-failure',observation=='network-failure')
-                        if not accept_outage_observation(result,primary,observation):
-                            raise RuntimeError('Proxy fault egress success or inconclusive')
+                        record(reserve+'-outage-egress-network-failure',observation=='network-failure')
+                        if not accept_outage_observation(result,reserve,observation):
+                            raise RuntimeError('Reserve fault egress success or inconclusive')
                     else:
                         kill_owned(bridge._sb)
-                        if not bridge._protection._guard().status()['armed']:
-                            raise RuntimeError('Deny policy absent')
-                        denied = smoke.tcp('1.1.1.1')
-                        record(primary+'-kill-local-deny',denied=='firewall-denied-10013')
-                        if denied!='firewall-denied-10013':
-                            raise RuntimeError('Local deny inconclusive')
-            result['phase'] = reserve+'-automatic-failover'
-            wait_for(lambda:bridge._state==TunState.RUNNING and bridge._sb.is_running() and bridge._sb.active_proxy.id==pair[1].id and bridge._sb.proxy_reachable,45 if fault_mode=='Proxy' else 30,lambda:diagnostics.sample(bridge))
-            us = exit_ip()
-            record(reserve+'-exit-differs-baseline',us!=baseline)
-            record(reserve+'-exit-differs-'+primary,us!=ee)
-            if us==baseline:
-                raise RuntimeError('Egress unchanged')
-            result['phase'] = 'reserve-exhaustion'
-            with bridge._op_lock:
-                bridge.proxies = []
-                if fault_mode=='Proxy':
-                    inject_proxy_outage(bridge)
-                    record(reserve+'-outage-core-alive',bridge._sb.is_running())
-                    record(reserve+'-outage-policy-armed',bridge._protection._guard().status()['armed'])
-                    observation = observe_exit_check()
-                    record(reserve+'-outage-egress-network-failure',observation=='network-failure')
-                    if not accept_outage_observation(result,reserve,observation):
-                        raise RuntimeError('Reserve fault egress success or inconclusive')
-                else:
-                    kill_owned(bridge._sb)
-            wait_for(lambda:bridge._state==TunState.ERROR,45 if fault_mode=='Proxy' else 12,lambda:diagnostics.sample(bridge))
-            blocked = bridge._protection._guard().status()['armed'] and smoke.tcp('1.1.1.1')=='firewall-denied-10013'
-            record('exhaustion-blocked',blocked)
-            if not blocked:
-                raise RuntimeError('Exhaustion block unproven')
+                wait_for(lambda:bridge._state==TunState.ERROR,45 if fault_mode=='Proxy' else 12,lambda:diagnostics.sample(bridge))
+                blocked = bridge._protection._guard().status()['armed'] and smoke.tcp('1.1.1.1')=='firewall-denied-10013'
+                record('exhaustion-blocked',blocked)
+                if not blocked:
+                    raise RuntimeError('Exhaustion block unproven')
             result['functional_ok'] = True
     except BaseException as exc:
         result['error'] = smoke.error(exc)
@@ -694,6 +732,7 @@ def main():
     parser.add_argument('--primary-country',choices=('EE','US'),default='EE')
     parser.add_argument('--us-index',type=int,default=1)
     parser.add_argument('--fault-mode',choices=('Core','Proxy'),default='Core')
+    parser.add_argument('--ui-check',action='store_true')
     parser.add_argument('--inspect-only',action='store_true')
     parser.add_argument('--availability-only',action='store_true')
     parser.add_argument('--watchdog')
@@ -701,7 +740,7 @@ def main():
     parser.add_argument('--parent-created',type=float)
     parser.add_argument('--parent-executable')
     args = parser.parse_args()
-    if args.inspect_only and args.availability_only:
+    if sum((args.inspect_only,args.availability_only,args.ui_check))>1:
         parser.error('Choose one inventory mode')
     if os.name!='nt' or not C.windll.shell32.IsUserAnAdmin():
         raise RuntimeError('Administrator required')
@@ -744,7 +783,7 @@ def main():
                     raise TypeError('Only booleans/counts allowed')
                 events.append({'phase':phase,'value':value})
                 smoke.write(folder/'events.json',events)
-            result = exercise(pair,backend,Guard(folder),record,args.fault_mode)
+            result = exercise(pair,backend,Guard(folder),record,args.fault_mode,args.ui_check)
             result['selected'] = [{'country':p.get_country_code(),'index':args.us_index if p.get_country_code()=='US' else 1} for p in pair]
             result['run'] = folder.name
             smoke.write(folder/'result.json',result)

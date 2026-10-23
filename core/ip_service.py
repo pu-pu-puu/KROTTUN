@@ -4,84 +4,21 @@ import re
 from typing import Dict, Any, Optional, Tuple
 from core.proxy_model import ProxyItem
 
-def get_current_system_ip(timeout: float = 4.0) -> Dict[str, Any]:
-    """Получает текущий внешний IP-адрес системы с защитой от кэширования."""
-    headers = {
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)",
-        "Connection": "close",
-        "Cache-Control": "no-cache",
-        "Pragma": "no-cache"
-    }
-    t = int(time.time() * 1000)
-
-    # 1. Попробуем ipwho.is с параметром антикэша
+def get_current_system_ip(timeout: float = 3.0) -> Dict[str, Any]:
+    """One bounded HTTPS request over OS routing; ignore Windows/env proxies."""
+    import ipaddress
+    result = {"ip": "IP недоступен", "country": "", "country_code": "", "status": "unavailable"}
     try:
-        resp = requests.get(f"https://ipwho.is/?_t={t}", headers=headers, proxies={"http": None, "https": None}, timeout=timeout)
-        if resp.status_code == 200:
-            data = resp.json()
-            if data.get("success", True):
-                return {
-                    "ip": data.get("ip", "Unknown"),
-                    "country": data.get("country", ""),
-                    "country_code": data.get("country_code", ""),
-                    "city": data.get("city", ""),
-                    "isp": data.get("connection", {}).get("isp", "") or data.get("isp", "")
-                }
+        with requests.Session() as session:
+            session.trust_env = False
+            with session.get("https://api.ipify.org?format=json", timeout=min(3.0, max(.1, timeout)),
+                             allow_redirects=False) as response:
+                if response.status_code != 200:
+                    return result
+                address = str(ipaddress.ip_address(response.json()["ip"]))
+        return {"ip": address, "country": "", "country_code": "", "status": "ready"}
     except Exception:
-        pass
-
-    # 2. Быстрый гео-сервис ip-api.com
-    try:
-        resp = requests.get(f"http://ip-api.com/json/?_t={t}", headers=headers, proxies={"http": None, "https": None}, timeout=timeout)
-        if resp.status_code == 200:
-            data = resp.json()
-            if data.get("status") == "success":
-                return {
-                    "ip": data.get("query", "Unknown"),
-                    "country": data.get("country", ""),
-                    "country_code": data.get("countryCode", ""),
-                    "city": data.get("city", ""),
-                    "isp": data.get("isp", "")
-                }
-    except Exception:
-        pass
-
-    # 3. Быстрый и безотказный api.ipify.org
-    try:
-        resp = requests.get(f"https://api.ipify.org?format=json&_t={t}", headers=headers, proxies={"http": None, "https": None}, timeout=timeout)
-        if resp.status_code == 200:
-            return {
-                "ip": resp.json().get("ip", "Unknown"),
-                "country": "",
-                "country_code": "",
-                "city": "",
-                "isp": ""
-            }
-    except Exception:
-        pass
-
-    # 4. Дополнительный fallback - httpbin.org
-    try:
-        resp = requests.get(f"https://httpbin.org/ip?_t={t}", headers=headers, proxies={"http": None, "https": None}, timeout=timeout)
-        if resp.status_code == 200:
-            ip_val = resp.json().get("origin", "Unknown").split(",")[0].strip()
-            return {
-                "ip": ip_val,
-                "country": "",
-                "country_code": "",
-                "city": "",
-                "isp": ""
-            }
-    except Exception:
-        pass
-
-    return {
-        "ip": "Не удалось определить",
-        "country": "",
-        "country_code": "",
-        "city": "",
-        "isp": ""
-    }
+        return result
 
 
 def test_proxy(proxy: ProxyItem, timeout: float = 5.0) -> Tuple[bool, Optional[int], str, str]:

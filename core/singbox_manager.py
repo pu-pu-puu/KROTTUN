@@ -160,6 +160,7 @@ class SingBoxManager:
         proxy_ip_cidrs = [f"{ip}/32" for ip in resolved_ips] if resolved_ips else []
 
         route_rules = [
+            {"action": "sniff", "sniffer": ["http", "tls", "dns"], "timeout": "300ms"},
             {"protocol": "dns", "action": "hijack-dns"},
             {"ip_version": 6, "action": "reject"}
         ]

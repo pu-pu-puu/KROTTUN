@@ -1005,18 +1005,19 @@
     <div class="view-content hidden" id="viewConnections">
       <h2>Соединения</h2>
       <p id="connectionSource">Источник недоступен</p>
-      <p>Снимки активных соединений могут пропускать короткие подключения. Без расшифровки HTTPS.</p>
+      <p>Имена сайтов из HTTP/TLS, когда приложение их передаёт. Без расшифровки HTTPS. Короткие подключения могут отсутствовать.</p>
       <div style="display:flex;gap:12px;margin:16px 0">
         <input id="connectionFilter" placeholder="Фильтр" oninput="renderConnections()" style="min-width:0;flex:1">
         <button class="action-btn btn-secondary" onclick="connectionPaused=!connectionPaused;this.textContent=connectionPaused?'Продолжить':'Пауза'">Пауза</button>
         <button class="action-btn btn-secondary" onclick="clearConnections()">Очистить</button>
       </div>
-      <div style="max-height:350px;overflow:auto"><table style="width:100%;text-align:left;font-size:12px">
-        <thead><tr><th>Время</th><th>Программа</th><th>Адрес</th><th>Протокол</th><th>Маршрут / прокси</th><th>Состояние</th></tr></thead>
+      <div style="max-height:350px;overflow:auto"><table style="width:100%;min-width:950px;text-align:left;font-size:12px">
+        <thead><tr><th>Время</th><th>Программа</th><th>Сайт / адрес</th><th>Протокол</th><th>Подключение</th><th>Состояние</th></tr></thead>
         <tbody id="connectionRows"></tbody>
       </table><p id="connectionEmpty">История пуста</p></div>
     </div>
     <!-- ================= 1. VIEW HOME ================= -->
+    <p id="networkWarning" hidden style="margin:8px 20px;padding:10px 12px;color:#fde68a;background:#29241b;border-radius:8px;font-size:12px;line-height:1.5"></p>
     <div class="view-content" id="viewHome">
       <div class="duration-label">Your Connection Duration</div>
       <div class="timer-text" id="liveTimer">00:00:00</div>
@@ -1264,13 +1265,23 @@
       const query = document.getElementById('connectionFilter').value.toLowerCase();
       const body = document.getElementById('connectionRows');
       body.replaceChildren();
-      connectionRows.filter(row => JSON.stringify(row).toLowerCase().includes(query)).forEach(row => {
+      connectionRows.filter(row => row.kind==='connection' && JSON.stringify(row).toLowerCase().includes(query)).forEach(row => {
         const tr = document.createElement('tr');
-        [new Date(row.timestamp*1000).toLocaleTimeString(), row.process || '—',
+        const app=(row.process || '—').split(/[\\/]/).pop();
+        [new Date(row.timestamp*1000).toLocaleTimeString(), app==='unavailable'?'Не определена':app,
           (row.destination || row.kind || '—') + (row.port ? ':'+row.port : ''),
-          row.protocol || '—', row.route || row.proxy_id || '—', row.state || '—'].forEach(value => {
+          row.protocol || '—', (row.route || '').includes('proxy-out')?'Через прокси':'Маршрут ядра', 'Зафиксировано'].forEach((value,index) => {
           const cell = document.createElement('td'); cell.textContent = value;
-          cell.style.cssText = 'padding:8px 6px;overflow-wrap:anywhere'; tr.appendChild(cell);
+          cell.style.cssText = 'padding:10px 8px;white-space:nowrap;max-width:300px;overflow:hidden;text-overflow:ellipsis';
+          cell.title=index===1 ? (row.process || '') : String(value);
+          if(index===2) {
+            cell.style.fontWeight='600';
+            const detail=document.createElement('small');
+            detail.style.cssText='display:block;color:#94a3b8;font-weight:400;margin-top:4px';
+            detail.textContent=row.address && row.address!==row.destination ? row.address : 'Имя сайта может быть скрыто приложением';
+            cell.appendChild(detail);
+          }
+          tr.appendChild(cell);
         });
         body.appendChild(tr);
       });
@@ -1293,7 +1304,11 @@
         if (!connectionPaused) {
           const data=await window.pywebview.api.get_connections(connectionCursor);
           connectionCursor=data.cursor;
-          connectionRows=connectionRows.concat(data.rows).slice(-1000);
+          data.rows.forEach(row=>{
+            const index=row.connection_key?connectionRows.findIndex(old=>old.connection_key===row.connection_key):-1;
+            if(index>=0) connectionRows[index]=row; else connectionRows.push(row);
+          });
+          connectionRows=connectionRows.slice(-1000);
           document.getElementById('connectionSource').textContent=data.source==='unavailable'?'Источник недоступен':'Снимки ядра; максимум 1000 строк в памяти';
           renderConnections();
         }
@@ -1851,6 +1866,8 @@
       document.getElementById('valDownload').innerText = s.speed_download || '0.0 Mb/s';
 
       // IP
+      const warning=document.getElementById('networkWarning');
+      warning.textContent=s.network_warning || ''; warning.hidden=!s.network_warning;
       if (s.system_ip) {
         updateIpDisplay(s.system_ip);
       }
