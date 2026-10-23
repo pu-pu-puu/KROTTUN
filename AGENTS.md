@@ -2,7 +2,7 @@
 # KROTTUN
 Windows TUN proxy manager: Python, pywebview, sing-box, Wintun.
 
-Verification: `python -m unittest discover -s tests` — 96 passed, including offline sing-box config check, terminal DOM/isolation, protection-strip polling and lifecycle deadline/DNS/release regressions. The user removed automatic window expansion; its API and obsolete geometry tests were removed. Earlier independent clean clone: 28 passed before host-harness additions.
+Verification: `python -m unittest discover -s tests` — 99 passed, including offline sing-box config check, terminal DOM/isolation, protection-strip polling and lifecycle deadline/DNS/release/Job-retry regressions. The user removed automatic window expansion; its API and obsolete geometry tests were removed. Earlier independent clean clone: 28 passed before host-harness additions.
 `python -m core.kill_switch --help` exits 0; runtime imports verified. Existing dependencies used; clean installation unvalidated.
 Launch: `python main.py` (unverified here; never launched because it changes real network settings).
 

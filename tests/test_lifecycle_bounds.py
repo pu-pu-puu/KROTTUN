@@ -19,6 +19,72 @@ def late_probe(pipe,targets,deadline,ready):
 
 
 class BoundsTests(unittest.TestCase):
+    def test_job_failed_configuration_closes_temporary_handle_and_retries(self):
+        from core import win_job
+        native=Mock();native.CreateJobObjectW.side_effect=[111,222]
+        native.SetInformationJobObject.side_effect=[False,True]
+        with patch.object(win_job,'_k32',native),patch.object(win_job,'_job',None):
+            self.assertFalse(win_job._ensure_job_created())
+            self.assertIsNone(win_job._job)
+            native.CloseHandle.assert_called_once_with(111)
+            self.assertTrue(win_job._ensure_job_created());self.assertEqual(win_job._job,222)
+
+    def test_release_publishes_intent_before_wait_and_queued_start_cannot_rearm(self):
+        from gui.app_webview import ProxyTunBridgeApi,TunState
+        api=ProxyTunBridgeApi.__new__(ProxyTunBridgeApi)
+        api._lock=threading.RLock();api._op_lock=threading.Lock();api._closing=False
+        api._state=TunState.RUNNING;api._ip_gen=0;api._protection=Mock(cancel=threading.Event())
+        api._refresh_ip_async=Mock();api._get_selected_proxy=Mock();api.settings={}
+        api._op_lock.acquire()
+        release=threading.Thread(target=api.release_protection);release.start()
+        try:
+            self.assertTrue(api._protection.cancel.wait(1))
+            with api._lock:
+                self.assertEqual(api._state,TunState.STOPPING)
+                self.assertTrue(api._release_pending)
+                generation=api._op_generation
+            self.assertTrue(api.release_protection()['busy'])
+            self.assertEqual(api._op_generation,generation)
+        finally:
+            api._op_lock.release();release.join(timeout=1)
+        api._do_toggle('start',generation=0)
+        api._protection.connect.assert_not_called()
+
+    def test_watchdog_cannot_retry_or_publish_success_over_explicit_release(self):
+        from gui.app_webview import ProxyTunBridgeApi,TunState
+        for during in ('probe','connect'):
+            with self.subTest(during=during):
+                api=ProxyTunBridgeApi.__new__(ProxyTunBridgeApi)
+                api._lock=threading.RLock();api._op_lock=threading.Lock();api._closing=False
+                api._state=TunState.RUNNING;api._ip_gen=0;api._refresh_ip_async=Mock()
+                api._protection=Mock(generation=1,cancel=threading.Event())
+                api._sb=Mock(process=object());api._sb.active_proxy.id='current'
+                api._sb.is_running.return_value=during=='probe'
+                api._source=Mock();api.proxies=[]
+                releases=[]
+                def interrupt(*args,**kwargs):
+                    thread=threading.Thread(target=api.release_protection);releases.append(thread);thread.start()
+                    self.assertTrue(api._protection.cancel.wait(1))
+                    return during=='connect'
+                api._sb._probe_tunnel.side_effect=interrupt
+                api._protection.connect.side_effect=interrupt
+                def release():
+                    self.assertEqual(api._state,TunState.STOPPING)
+                    self.assertTrue(api._release_pending)
+                api._protection.release.side_effect=release
+                loops=[0]
+                def sleep(_):
+                    loops[0]+=1
+                    if loops[0]>1: api._closing=True
+                try:
+                    with patch('gui.app_webview.time.sleep',side_effect=sleep),patch('gui.app_webview.time.monotonic',side_effect=[0,40,40]):
+                        api._watchdog_loop()
+                finally:
+                    for thread in releases:thread.join(timeout=1)
+                self.assertTrue(releases)
+                self.assertTrue(api._protection.cancel.is_set())
+                self.assertEqual(api._state,TunState.IDLE)
+                if during=='probe':api._protection.connect.assert_not_called()
     def test_termination_exception_retains_handle_blocks_spawn_and_release_until_confirmed(self):
         manager=SingBoxManager.__new__(SingBoxManager)
         core=Mock();core.poll.return_value=None

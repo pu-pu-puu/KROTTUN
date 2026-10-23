@@ -1,5 +1,6 @@
 import ctypes
 import logging
+import threading
 from ctypes import wintypes
 
 _k32 = ctypes.WinDLL("kernel32", use_last_error=True)
@@ -7,6 +8,8 @@ _k32.CreateJobObjectW.restype = wintypes.HANDLE
 _k32.CreateJobObjectW.argtypes = [wintypes.LPVOID, wintypes.LPCWSTR]
 _k32.SetInformationJobObject.argtypes = [wintypes.HANDLE, ctypes.c_int, wintypes.LPVOID, wintypes.DWORD]
 _k32.AssignProcessToJobObject.argtypes = [wintypes.HANDLE, wintypes.HANDLE]
+_k32.CloseHandle.argtypes = [wintypes.HANDLE]
+_k32.CloseHandle.restype = wintypes.BOOL
 _k32.GetCurrentProcess.restype = wintypes.HANDLE
 _k32.IsProcessInJob.argtypes = [wintypes.HANDLE,wintypes.HANDLE,ctypes.POINTER(wintypes.BOOL)]
 _k32.IsProcessInJob.restype = wintypes.BOOL
@@ -41,30 +44,31 @@ class _EXT(ctypes.Structure):
     ]
 
 _job = None
+_job_lock = threading.Lock()
 
 def _ensure_job_created() -> bool:
     global _job
-    if _job is not None:
-        return True
-    try:
-        _job = _k32.CreateJobObjectW(None, None)
-        if not _job:
-            logging.error("CreateJobObjectW failed with error code: %d", ctypes.get_last_error())
+    with _job_lock:
+        if _job is not None:
+            return True
+        temporary = None
+        try:
+            temporary = _k32.CreateJobObjectW(None, None)
+            if not temporary:
+                return False
+            info = _EXT()
+            info.Basic.LimitFlags = JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE
+            if not _k32.SetInformationJobObject(temporary,JobObjectExtendedLimitInformation,
+                    ctypes.byref(info),ctypes.sizeof(info)):
+                return False
+            _job = temporary
+            temporary = None
+            return True
+        except Exception:
             return False
-        info = _EXT()
-        info.Basic.LimitFlags = JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE
-        if not _k32.SetInformationJobObject(
-            _job, 
-            JobObjectExtendedLimitInformation, 
-            ctypes.byref(info), 
-            ctypes.sizeof(info)
-        ):
-            logging.error("SetInformationJobObject failed with error code: %d", ctypes.get_last_error())
-            return False
-        return True
-    except Exception as e:
-        logging.error("Exception in _ensure_job_created: %s", e)
-        return False
+        finally:
+            if temporary:
+                _k32.CloseHandle(temporary)
 
 def bind_self_to_job() -> bool:
     """
