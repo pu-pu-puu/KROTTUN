@@ -4,6 +4,7 @@ import unittest
 from unittest.mock import Mock
 from unittest.mock import patch
 import ctypes as C
+import dataclasses
 import sys
 from core.kill_switch import WindowsWfpBackend, OWNER
 from core.wfp_native import EnumTemplate, GUID, KEYS, P, U32
@@ -220,6 +221,244 @@ class LiveSmokeTests(unittest.TestCase):
 
 
 class ProxyFailoverTests(unittest.TestCase):
+    def test_timeout_can_continue_functional_checks_but_never_overall_pass(self):
+        result={'functional_ok':False,'cleanup_ok':True,'no_tun':True}
+        self.assertTrue(stage3.accept_outage_observation(result,'EE','timeout-inconclusive'))
+        self.assertTrue(stage3.accept_outage_observation(result,'US','network-failure'))
+        # Represents real failover/exhaustion completing, not a negative-test pass.
+        result['functional_ok']=True
+        stage3.finalize_verdict(result,restored=True,watchdog_ok=True)
+        self.assertTrue(result['functional_ok'])
+        self.assertFalse(result['ok'])
+        self.assertEqual(result['classification'],'inconclusive')
+
+    def test_actual_response_and_invalid_payload_must_abort_not_continue(self):
+        for observation in ('http-response','successful-response','invalid-inconclusive'):
+            with self.subTest(observation=observation):
+                result={'functional_ok':True,'cleanup_ok':True,'no_tun':True}
+                self.assertFalse(stage3.accept_outage_observation(result,'EE',observation))
+                stage3.finalize_verdict(result,restored=True,watchdog_ok=True)
+                self.assertFalse(result['functional_ok'])
+                self.assertFalse(result['ok'])
+
+    def test_observation_classifier_distinguishes_timeout_http_and_network_failure(self):
+        import requests
+        cases=((requests.ReadTimeout(),'timeout-inconclusive'),(requests.HTTPError(),'http-response'),
+               (OSError(),'network-failure'),(ValueError(),'invalid-inconclusive'))
+        for exception,expected in cases:
+            with self.subTest(expected=expected):
+                self.assertEqual(stage3.observe_exit_check(check=Mock(side_effect=exception)),expected)
+        self.assertEqual(stage3.observe_exit_check(check=lambda:'private-IP'),'successful-response')
+
+    def test_proxy_outage_withdraws_endpoints_for_exact_current_luid_without_core_kill(self):
+        bridge=Mock()
+        manager=bridge._sb
+        manager.interface_name='sing-tun-private-current'
+        manager.process.poll.return_value=None
+        guard=bridge._protection._guard.return_value
+        guard.backend.app_id.return_value=b'verified'
+        guard.status.return_value={'armed':True}
+        lookup=Mock(return_value=123456)
+        stage3.inject_proxy_outage(bridge,lookup=lookup)
+        lookup.assert_called_once_with('sing-tun-private-current')
+        guard.arm.assert_called_once_with((),b'verified',123456)
+        manager.process.kill.assert_not_called()
+        manager.process.terminate.assert_not_called()
+        manager.stop.assert_not_called()
+        manager.start.assert_not_called()
+        manager._probe_tunnel.assert_not_called()
+
+    def test_proxy_outage_rejects_unverified_luid_before_arm(self):
+        bridge=Mock()
+        bridge._sb.process.poll.return_value=None
+        guard=bridge._protection._guard.return_value
+        for invalid in (None,False,0,-1,'prefix'):
+            with self.subTest(invalid=invalid),self.assertRaises(RuntimeError):
+                stage3.inject_proxy_outage(bridge,lookup=lambda alias:invalid)
+        guard.arm.assert_not_called()
+
+    def test_fault_exit_check_requires_completed_network_failure(self):
+        self.assertFalse(stage3.blocked_exit_check(check=lambda:'never-export-this-IP'))
+        self.assertTrue(stage3.blocked_exit_check(check=Mock(side_effect=OSError('secret error'))))
+        self.assertFalse(stage3.blocked_exit_check(check=Mock(side_effect=ValueError('private payload'))))
+        stalled=stage3.threading.Event()
+        try:
+            self.assertFalse(stage3.blocked_exit_check(check=lambda:stalled.wait(1),seconds=.01))
+        finally:
+            stalled.set()
+
+    def test_fault_exit_timeouts_and_http_errors_are_inconclusive(self):
+        import requests
+        for exception in (requests.Timeout,requests.ReadTimeout,requests.ConnectTimeout,TimeoutError,requests.HTTPError):
+            with self.subTest(exception=exception.__name__):
+                self.assertFalse(stage3.blocked_exit_check(check=Mock(side_effect=exception('secret payload'))))
+
+    def test_owned_alias_residual_blocks_watchdog_and_initial_tun_absence(self):
+        import psutil
+        for name in ('sing-tun','sing-tun-0123456789abcdef'):
+            with self.subTest(name=name),patch.object(psutil,'net_if_addrs',return_value={name:[]}):
+                self.assertFalse(stage3.tun_absent())
+                marker=Mock()
+                with patch.object(stage3,'cores_gone',return_value=True),patch.object(stage3,'raw_cleanup') as cleanup:
+                    self.assertFalse(stage3.watchdog_cleanup(Mock(),marker))
+                marker.unlink.assert_not_called()
+                cleanup.assert_not_called()
+
+    def test_adapter_diagnostics_use_current_alias_exactly_without_outputting_it(self):
+        import psutil
+        alias='sing-tun-private-current'
+        address=Mock(address='198.18.0.1')
+        with patch.object(psutil,'net_if_addrs',return_value={alias:[address],'sing-tun-old':[]}):
+            facts=stage3.adapter_snapshot(alias)
+        self.assertTrue(facts['alias_exact_present'])
+        self.assertTrue(facts['expected_address_exact_alias'])
+        self.assertEqual(facts['tun_alias_count'],2)
+        self.assertNotIn(alias,str(facts))
+
+    def test_startup_fatal_facts_identify_file_exists_without_exporting_sensitive_text(self):
+        raw = ('FATAL start inbound/tun[tun-in]: WintunCreateAdapter configure tun interface: '
+               'Cannot create a file when that file already exists. '
+               'https://private-user:private-password@private-host:443/a '
+               '192.0.2.9 2001:db8::9 {038538ab-ff8d-4956-9ae6-531ed0cf58a4} '
+               'C:\\private-path\\secret private%2Duser private%2Dpassword')
+        facts = stage3.startup_error_facts(raw)
+        self.assertEqual(facts['reason'],'file-exists')
+        self.assertIn('cannot-create-file-already-exists',facts['phrases'])
+        self.assertIn('WintunCreateAdapter',facts['operations'])
+        self.assertIn('configure-interface',facts['operations'])
+        for sensitive in ('private','192.0.2.9','2001:db8','038538ab','https','password'):
+            self.assertNotIn(sensitive,str(facts))
+
+    def test_startup_error_facts_stop_after_core_started(self):
+        module = Mock()
+        module.PIPE = -1
+        capture = stage3.MemoryCoreCapture(module,'D:/test/sing-box.exe')
+        with patch.object(stage3.threading,'Thread'):
+            capture.Popen(['D:/test/sing-box.exe'])
+        attempt = capture.attempts[0]
+        capture.feed(attempt,'FATAL WintunStartSession invalid handle private-token')
+        self.assertEqual(len(attempt['startup_errors']),1)
+        self.assertEqual(attempt['startup_errors'][0]['reason'],'invalid-handle')
+        capture.feed(attempt,'INFO sing-box started')
+        capture.feed(attempt,'ERROR connection private-password device is not ready')
+        self.assertEqual(len(attempt['startup_errors']),1)
+
+    def test_memory_core_capture_targets_only_test_executable_and_redacts_logs(self):
+        module = Mock()
+        module.PIPE = -1
+        process = module.Popen.return_value
+        capture = stage3.MemoryCoreCapture(module,'D:/test/sing-box.exe')
+        with patch.object(stage3.threading,'Thread') as thread:
+            returned = capture.Popen(['D:/test/sing-box.exe','run'],stderr='old')
+        self.assertIs(returned,process)
+        self.assertEqual(module.Popen.call_args.kwargs['stderr'],-1)
+        thread.return_value.start.assert_called_once()
+        attempt = capture.attempts[0]
+        capture.feed(attempt,'DEBUG router: updated default interface secret-interface 203.0.113.1')
+        capture.feed(attempt,'INFO inbound/tun[tun-in]: started at secret-alias')
+        capture.feed(attempt,'INFO clash-api: restful api listening at secret-host')
+        capture.feed(attempt,'INFO sing-box started secret-password')
+        capture.feed(attempt,'FATAL ERROR create adapter access denied 0x00000005 secret-user')
+        report = capture.snapshot()
+        self.assertTrue(report[0]['flags']['default-interface-found'])
+        self.assertTrue(report[0]['flags']['tun-start'])
+        self.assertTrue(report[0]['flags']['clash-listening'])
+        self.assertTrue(report[0]['flags']['core-started'])
+        self.assertEqual(report[0]['reason'],'access-denied')
+        self.assertEqual(report[0]['native_codes'],['0x00000005'])
+        self.assertNotIn('secret',str(report))
+        self.assertNotIn('203.0.113.1',str(report))
+        capture.Popen(['D:/test/unrelated.exe'],stderr='original')
+        self.assertEqual(module.Popen.call_args.kwargs['stderr'],'original')
+        self.assertEqual(len(capture.attempts),1)
+
+    def test_debug_config_changes_only_log_copy(self):
+        manager = Mock()
+        original = {'log':{'level':'warn','output':'private-output','timestamp':True},'other':{'value':'keep'}}
+        manager.generate_config.return_value = original
+        stage3.enable_debug_config(manager)
+        modified = manager.generate_config()
+        self.assertEqual(modified['log'],{'level':'debug','timestamp':True})
+        self.assertEqual(modified['other'],original['other'])
+        self.assertEqual(original['log']['output'],'private-output')
+        self.assertEqual(original['log']['level'],'warn')
+
+    def test_adapter_snapshot_reports_renamed_adapter_without_names_or_addresses(self):
+        import psutil
+        address = Mock(address='198.18.0.1')
+        with patch.object(psutil,'net_if_addrs',return_value={'sing-tun 2':[address],'private-adapter':[]}):
+            report = stage3.adapter_snapshot()
+        self.assertEqual(report,{'alias_exact_present':False,'tun_alias_count':1,'expected_address_anywhere':True,'expected_address_exact_alias':False})
+        self.assertNotIn('198.18.0.1',str(report))
+        self.assertNotIn('private-adapter',str(report))
+
+    def test_wait_ready_diagnostics_preserve_result_and_capture_poll_and_adapter_facts(self):
+        manager = Mock()
+        manager._wait_ready.return_value = False
+        process = Mock()
+        process.poll.return_value = None
+        diagnostics = stage3.Diagnostics([])
+        diagnostics.wrap(manager,'_wait_ready','wait-ready')
+        with patch.object(stage3,'adapter_snapshot',side_effect=[{'alias_exact_present':False},{'alias_exact_present':True}]):
+            self.assertFalse(manager._wait_ready(process))
+        event = diagnostics.calls[0]
+        self.assertFalse(event['returned'])
+        self.assertFalse(event['process_exited'])
+        self.assertFalse(event['adapters_before']['alias_exact_present'])
+        self.assertTrue(event['adapters_after']['alias_exact_present'])
+
+    def test_startup_error_classification_never_exports_arbitrary_message(self):
+        classified = stage3.classify_startup_error(RuntimeError('FATAL ERROR address already in use secret-host password'))
+        self.assertEqual(classified,{'reason':'address-in-use','fatal_flag':True,'error_flag':True})
+        self.assertNotIn('secret',str(classified))
+
+    def test_select_second_us_and_reverse_primary_without_saved_mutation(self):
+        from core.proxy_model import ProxyItem
+        rows = [ProxyItem('ee','hidden',443,country_code='EE'),ProxyItem('us1','hidden',443,country_code='US'),ProxyItem('us2','hidden',443,country_code='US')]
+        pair,counts = stage3.select_pair(rows,primary='US',us_index=2)
+        self.assertEqual([p.id for p in pair],['us2','ee'])
+        self.assertEqual([p.id for p in rows],['ee','us1','us2'])
+        self.assertIsNone(stage3.select_pair(rows,us_index=3)[0])
+        self.assertIsNone(stage3.select_pair(rows,us_index=0)[0])
+
+    def test_availability_only_selected_pair_quotes_auth_and_hides_payload(self):
+        from core.proxy_model import ProxyItem
+        rows = [ProxyItem('secret-id','secret-host',443,username='user@secret',password='pass:secret',country_code='US')]
+        import requests
+        session,response = Mock(),Mock()
+        response.raw.read.return_value = b'203.0.113.1'
+        response.__enter__ = Mock(return_value=response)
+        response.__exit__ = Mock(return_value=False)
+        session.get.return_value = response
+        context = Mock()
+        context.__enter__ = Mock(return_value=session)
+        context.__exit__ = Mock(return_value=False)
+        with patch.object(requests,'Session',return_value=context):
+            report = stage3.availability(rows,us_index=2)
+        self.assertEqual(report,[{'country':'US','index':2,'success':True}])
+        kwargs = session.get.call_args.kwargs
+        self.assertFalse(session.trust_env)
+        self.assertFalse(kwargs['allow_redirects'])
+        self.assertEqual(kwargs['timeout'],3)
+        self.assertIn('user%40secret:pass%3Asecret@',kwargs['proxies']['https'])
+        self.assertNotIn('secret',str(report))
+        self.assertNotIn('203.0.113.1',str(report))
+
+    def test_diagnostic_wrappers_preserve_results_and_sanitize_errors(self):
+        manager = Mock()
+        expected = object()
+        manager.start.return_value = expected
+        manager._probe_tunnel.side_effect = RuntimeError('secret-host secret-password 0x80320004')
+        diagnostics = stage3.Diagnostics([])
+        diagnostics.wrap(manager,'start','start')
+        diagnostics.wrap(manager,'_probe_tunnel','probe')
+        self.assertIs(manager.start(),expected)
+        with self.assertRaises(RuntimeError):
+            manager._probe_tunnel()
+        self.assertEqual(diagnostics.calls[1]['error']['native_codes'],['0x80320004'])
+        self.assertNotIn('secret',str(diagnostics.calls))
+        self.assertTrue(all('seconds' in call for call in diagnostics.calls))
+
     def test_residual_tun_prevents_watchdog_release_marker_removal_and_success(self):
         marker,backend = Mock(),Mock()
         with patch.object(stage3,'cores_gone',return_value=True),patch.object(stage3,'tun_absent',return_value=False),patch.object(stage3,'raw_cleanup') as cleanup:
@@ -234,7 +473,7 @@ class ProxyFailoverTests(unittest.TestCase):
         cleanup.assert_called_once_with(backend)
         marker.unlink.assert_not_called()
 
-    def test_selector_exact_unique_and_clones_without_exposing_secrets(self):
+    def test_selector_first_saved_per_country_and_clones_without_exposing_secrets(self):
         from core.proxy_model import ProxyItem
         ee = ProxyItem('secret-id','secret-host',443,password='secret-password',country_code='EE')
         us = ProxyItem('secret-id2','secret-host2',443,password='secret-password2',country_code='US')
@@ -242,7 +481,13 @@ class ProxyFailoverTests(unittest.TestCase):
         self.assertEqual([p.get_country_code() for p in pair],['EE','US'])
         self.assertIsNot(pair[0],ee)
         self.assertEqual(counts,{'EE':1,'US':1})
-        pair,counts = stage3.select_pair([ee,ee,us])
+        ee_second = dataclasses.replace(ee,id='another-secret',password='different-secret')
+        us_second = dataclasses.replace(us,id='another-secret2')
+        pair,counts = stage3.select_pair([ee,ee_second,us,us_second])
+        self.assertEqual(pair[0],ee)
+        self.assertEqual(pair[1],us)
+        self.assertEqual(counts,{'EE':2,'US':2})
+        pair,counts = stage3.select_pair([ee,ee_second])
         self.assertIsNone(pair)
         self.assertNotIn('secret',str(counts))
 
@@ -267,7 +512,9 @@ class ProxyFailoverTests(unittest.TestCase):
         guard,backend = Mock(),Mock()
         guard.require_ready.side_effect = RuntimeError('not ready')
         with patch.object(stage3.smoke,'tcp',return_value='connected'),patch.object(stage3,'exit_ip',return_value='hidden'),patch.object(stage3.smoke,'rehearse'),patch('core.win_job.bind_self_to_job') as bind:
-            result = stage3.exercise([],backend,guard,Mock())
+            from core.proxy_model import ProxyItem
+            pair = [ProxyItem('hidden1','hidden1',443,country_code='EE'),ProxyItem('hidden2','hidden2',443,country_code='US')]
+            result = stage3.exercise(pair,backend,guard,Mock())
         self.assertFalse(result['ok'])
         bind.assert_not_called()
         guard.finish.assert_called_once()

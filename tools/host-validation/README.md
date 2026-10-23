@@ -60,8 +60,10 @@ Stage 3 inventory only (no WFP/TUN commit, requires same user's elevation for DP
 Stage 3 LIVE (review before first invocation):
   powershell -NoProfile -ExecutionPolicy Bypass -File D:\Projects\KROTTUN\tools\host-validation\stage3.ps1
 
-Requires exactly one saved EE and one saved US as identified by the production
-get_country_code(), no existing owned policy/recovery marker/core/GUI/sing-tun.
+Uses the first saved EE and first saved US, preserving saved order within each
+country, as identified by the production get_country_code(). Reports country
+counts only; aborts if either country is missing. Requires no existing owned
+policy/recovery marker/core/GUI/sing-tun.
 Saved proxy list/settings are never written. The headless production bridge uses
 in-memory clones, EE first and US reserve. Background IP/geo work is suppressed;
 its real automatic failover watchdog and ConnectionSource remain enabled.
@@ -90,3 +92,88 @@ then exhausted in-memory candidates with ERROR and blocked TCP. IP values remain
 in memory. Missing 10013 is inconclusive/failure, not a leak-proof pass. Cleanup
 requires no owned policy, no TUN and restored TCP. This still does not prove packet
 capture/DNS/reboot/full leak prevention or release acceptance.
+
+Selection/diagnosis options (no additional automatic attempts):
+  stage3.ps1 -UsIndex 2 -AvailabilityOnly
+  stage3.ps1 -UsIndex 2
+  stage3.ps1 -UsIndex 2 -PrimaryCountry US
+
+UsIndex is the one-based ordinal among saved US records, preserving their saved
+order; EE remains the first saved EE. AvailabilityOnly checks ONLY this selected
+pair using explicit proxy HTTPS to api.ipify.org, environment proxies disabled,
+redirects disabled, request timeout 3 seconds, no geo lookup. It reports country,
+saved ordinal, success and exception type only; the validated exit IP remains in
+memory. No manager, TUN or WFP commit occurs. InspectOnly and AvailabilityOnly
+are mutually exclusive. Availability result 'ok' means diagnostics completed;
+each endpoint's success is reported separately.
+
+Live failures now include bounded monotonic bridge/protection state samples,
+active country (local ID mapping only), core running/reachable booleans, native
+manager start/probe durations/boolean probe results and sanitized exception types
+and native codes. In-progress start/probe calls remain visible at timeout. Journal
+diagnostics aggregate only allowlisted failover/protection event states/counts.
+Wrappers preserve the original production method results and exceptions. No raw
+engine logs, saved proxy payloads, IDs, hosts or error messages are exported.
+The 30-second wait is unchanged; timings can distinguish an unfinished manager
+start from a completed failed health probe. Previous latest reports are copied
+to stage3-before-diagnostics-<nonce>.json before replacement; per-run reports stay.
+
+Adapter diagnostics now accompany bounded state samples and original _wait_ready
+entry/exit: exact alias presence, number of sing-tun-prefixed aliases, expected
+address present anywhere/exact alias, original return and child process poll facts.
+No alias/address strings are exported. A small allowlisted classification inspects
+startup exception text in memory only; unknown stays unknown. It is not a native
+stderr capture. Core I/O and logging redirection remain unchanged. For isolation,
+run the selected US proxy first using -UsIndex 2 -PrimaryCountry US; failover then
+targets the first EE proxy. This is an explicit separate test, never automatic.
+
+Debug startup diagnostics (harness only): generate_config copies the log settings,
+sets debug level and removes log.output so the actual test core logs to stderr.
+A manager-local subprocess proxy intercepts Popen only for its exact executable,
+redirecting stderr to PIPE and draining on a daemon thread. It never changes the
+returned child process or nonmatching subprocess calls. Raw chunks/pending lines
+stay bounded in that thread (4096-byte chunks/pending line); no raw logs are saved
+or included in reports. Reported per-start facts are fixed stage flags (default
+interface found, TUN creation/start, route update, Clash listening, core started),
+last allowlisted component, FATAL/ERROR flags, allowlisted reason and native codes.
+Absence of a flag means only that no matching message was observed. Ordinary
+production settings/code are unchanged. There is no automatic extra attempt.
+
+Startup-fatal detail uses only fixed recognized phrases, API-operation labels and
+at most 48 words from a fixed error vocabulary. Windows reasons include file/
+already-exists, cannot-create-file, object-in-use, sharing violation, invalid
+handle, device-not-ready, mutex and timeout. Operations distinguish Wintun adapter
+create/open/session start, address/interface configuration and routes. Up to eight
+startup error facts are retained per attempt, only before core-started is observed.
+There is deliberately no fatal excerpt or raw text to redact: unknown words,
+URLs, credentials, proxy fields, interface names, paths and addresses cannot enter
+this schema. Recognized phrases are evidence; generic adapter-create alone still
+does not identify the underlying Windows failure.
+
+Complementary proxy-outage test (Core remains the default fault mode):
+  powershell -NoProfile -ExecutionPolicy Bypass -File D:\Projects\KROTTUN\tools\host-validation\stage3.ps1 -UsIndex 2 -FaultMode Proxy
+
+Proxy mode withdraws the active endpoint permit under the production operation
+lock, retaining only deny/loopback/boot plus the exact current TUN LUID. It does
+not kill the core, call its probe, change probe results or alter watchdog timing.
+The core must remain alive and policy armed. A controlled ipify check has a
+three-second outer wait and two-second request timeout; only a completed network
+exception other than timeout/HTTP status proves the injected failure. Observations
+are fixed labels: network-failure, timeout-inconclusive, http-response,
+successful-response and invalid-inconclusive. Only network failure and timeout
+continue to functional failover checks; actual HTTP/public success or invalid
+payload aborts. A timeout NEVER passes the negative test. If functional failover,
+exhaustion and cleanup all succeed but any negative check timed out, functional_ok
+is true, classification is inconclusive, ok stays false and the script exits
+nonzero. No IP is output. The real production health probe
+then drives reserve failover. Both automatic-failover/exhaustion waits allow 45
+seconds (normal 30-second health interval + 2.5-second probe + core startup margin).
+The independent recovery deadline remains 100 seconds. Core mode retains its
+original behavior/waits. Exhaustion clears candidates only in memory, withdraws
+the US endpoint permit with core alive, then requires ERROR, armed policy and TCP
+10013. Final cleanup is unchanged. Packet capture/DNS/IPv6/reboot remain separate.
+
+Production route.find_process is enabled so connection snapshots can report process
+metadata even when protected routing has no process rules. Actual availability
+still depends on the native engine and observed connection; the harness reports
+the live boolean rather than manufacturing process fields.
