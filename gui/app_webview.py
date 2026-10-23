@@ -134,62 +134,6 @@ class ProxyTunBridgeApi:
     def set_window(self, window):
         self._window = window
 
-    def set_log_view(self, enabled):
-        """Geometry only: widen logs within the monitor work area, restore on exit."""
-        if type(enabled) is not bool or self._window is None:
-            return {"success":False}
-        with self._lock:
-            if not hasattr(self,'_log_geometry_lock'):
-                self._log_geometry_lock=threading.Lock()
-        with self._log_geometry_lock:
-            saved=getattr(self,'_log_view_restore',None)
-            if enabled == (saved is not None):
-                return {"success":True}
-            window=self._window
-            try:
-                import math
-                # Installed WinForms Screen.frame is physical WorkingArea,
-                # whereas resize/move/get_size/get_position use this exact
-                # per-window native BrowserView multiplier (not Screen.scale).
-                scale=float(window.native._scale)
-                if not math.isfinite(scale) or scale<=0:
-                    return {"success":False}
-                original=(int(window.width),int(window.height),int(window.x),int(window.y))
-                target=original if enabled else saved
-                center=(target[2]+target[0]/2,target[3]+target[1]/2)
-                areas=[]
-                for screen in webview.screens:
-                    frame=getattr(screen,'frame',None)
-                    if frame is not None and all(hasattr(frame,key) for key in ('X','Y','Width','Height')):
-                        area=tuple(int(getattr(frame,key)) for key in ('X','Y','Width','Height'))
-                    else:
-                        area=(int(screen.x),int(screen.y),int(screen.width),int(screen.height))
-                    if area[2]>0 and area[3]>0:
-                        left=math.ceil(area[0]/scale);top=math.ceil(area[1]/scale)
-                        right=math.floor((area[0]+area[2])/scale)
-                        bottom=math.floor((area[1]+area[3])/scale)
-                        if right>left and bottom>top:
-                            areas.append((left,top,right-left,bottom-top))
-                if not areas:
-                    return {"success":False}
-                def distance(area):
-                    x,y,w,h=area
-                    return max(x-center[0],0,center[0]-x-w)**2+max(y-center[1],0,center[1]-y-h)**2
-                x,y,w,h=min(areas,key=distance)
-                width=min(1120 if enabled else target[0],w)
-                height=min(820 if enabled else target[1],h)
-                left=round(center[0]-width/2) if enabled else target[2]
-                top=round(center[1]-height/2) if enabled else target[3]
-                left=max(x,min(left,x+w-width));top=max(y,min(top,y+h-height))
-                if enabled: self._log_view_restore=original
-                window.resize(width,height)
-                window.move(left,top)
-                if not enabled: self._log_view_restore=None
-                return {"success":True}
-            except Exception:
-                # Keep original geometry available for a later restore attempt.
-                return {"success":False}
-
     def _notify_ui_refresh(self):
         """Оповещает интерфейс WebView о фоновом обновлении данных прокси."""
         if self._window and not self._closing:

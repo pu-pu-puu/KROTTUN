@@ -4,6 +4,9 @@
 
 **Goal:** Implement the user-approved ASCII terminal appearance for KROTTUN's connection log and deliver a rebuilt EXE.
 
+## User scope correction — authoritative
+User clarified: «нужно было заменить только сам лог а не всю вкладку», then supplied an orange rectangle. The rectangle includes the filter/pause/clear toolbar AND log viewport, below the existing title/source/help text. Terminal styling belongs ONLY inside this component. Everything outside it (blue background, logo/IP, navigation, protection controls, heading/help, warning) stays original. Remove body-wide styling, pixel hero and automatic window resizing; restore the native 520×760 layout. This correction supersedes the earlier expansion/body-mode requirements below. Keep selection, enrichment, filtering and privacy-safe text rendering.
+
 **Architecture:** Scope styles to the connections view/body mode. Reuse existing journal polling; add frontend selected-row state, an accessible inspector and one UI-only bridge method to expand/restore the window. Keep all connection, IP, firewall and proxy logic untouched.
 
 **Tech Stack:** Existing Python/pywebview, HTML/CSS/plain JavaScript, PyInstaller; no new dependencies or external font/network requests.

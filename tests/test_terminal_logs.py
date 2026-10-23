@@ -2,11 +2,29 @@
 import pathlib
 import subprocess
 import unittest
+from html.parser import HTMLParser
 
 ROOT=pathlib.Path(__file__).resolve().parents[1]
 
 
 class TerminalLogsTests(unittest.TestCase):
+    def test_terminal_boundary_contains_toolbar_log_inspector_only(self):
+        class Boundaries(HTMLParser):
+            def __init__(self): super().__init__();self.stack=[];self.parents={}
+            def handle_starttag(self,tag,attrs):
+                identifier=dict(attrs).get('id')
+                if identifier:self.parents[identifier]=list(self.stack)
+                if tag not in ('input','img','meta','link','br','hr'):self.stack.append(identifier)
+            def handle_endtag(self,tag):
+                if self.stack:self.stack.pop()
+        html=(ROOT/'gui/web/index.html').read_text(encoding='utf-8')
+        parser=Boundaries();parser.feed(html)
+        for identifier in ('connectionFilter','connectionPause','connectionRows','connectionInspectorHost','connectionCount'):
+            self.assertIn('terminalLogPane',parser.parents[identifier])
+        for identifier in ('connectionSource','networkWarning','ipPill','tabConnections','protectionStatus'):
+            self.assertNotIn('terminalLogPane',parser.parents[identifier])
+        self.assertNotIn('body.terminal-logs',html)
+        self.assertNotIn('renderTerminalWordmark',html)
     def test_selection_enrichment_filter_pause_clear_and_text_safety(self):
         harness=r'''
 const fs=require('fs'),vm=require('vm'),assert=require('assert');
@@ -20,7 +38,7 @@ class Element {
 }
 const elements=new Map();
 const document={getElementById:id=>{if(!elements.has(id))elements.set(id,new Element());return elements.get(id)},createElement:()=>new Element(),querySelectorAll:()=>[],addEventListener:()=>{},body:new Element()};
-let clears=0;const window={addEventListener:()=>{},pywebview:{api:{clear_connections:async()=>{clears++}}}};
+let clears=0,geometryCalls=0;const window={addEventListener:()=>{},pywebview:{api:{clear_connections:async()=>{clears++},set_log_view:async()=>{geometryCalls++}}}};
 const context=vm.createContext({document,window,console,Date,setInterval:()=>{},clearInterval:()=>{},setTimeout:()=>{},clearTimeout:()=>{}});
 const html=fs.readFileSync(process.argv[1],'utf8');
 vm.runInContext([...html.matchAll(/<script>([\s\S]*?)<\/script>/g)].map(m=>m[1]).join('\n'),context);
@@ -48,8 +66,10 @@ const run=source=>vm.runInContext(source,context);
  assert.equal(run('selectedConnectionKey'),null);
  await run('clearConnections()');assert.equal(clears,1);assert.equal(run('connectionRows.length'),0);
  assert.equal(document.getElementById('connectionInspectorHost').textContent,'Выберите строку');
- run("switchTab('connections')");assert(document.body.classes.has('terminal-logs'));
- run("switchTab('home')");assert(!document.body.classes.has('terminal-logs'));
+ document.body.classes.add('blue-incumbent');
+ run("switchTab('connections')");assert.deepEqual([...document.body.classes],['blue-incumbent']);
+ run("switchTab('home')");assert.deepEqual([...document.body.classes],['blue-incumbent']);
+ await new Promise(setImmediate);assert.equal(geometryCalls,0);
  console.log('terminal behavior passed');
 })().catch(error=>{console.error(error);process.exitCode=1});
 '''
