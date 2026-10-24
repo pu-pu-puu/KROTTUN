@@ -22,15 +22,11 @@
     python3 .autopilot/ap.py add report "Два формата даты в уведомлениях — оставлено"
     python3 .autopilot/ap.py blind checked=12 matched=11 --mismatch "R07 — статус не виден"
     python3 .autopilot/ap.py tests 34/0                 # последний полный прогон
-    python3 .autopilot/ap.py ask briefing --note "три вопроса в чате"   # ждём пользователя
-    python3 .autopilot/ap.py answered                   # ответил (stage/ticket закрывают сами)
     python3 .autopilot/ap.py finish --result "Бот принимает заявки и пишет их в таблицу"
     python3 .autopilot/ap.py reopen                     # второй бриф в сданном прогоне
-    python3 .autopilot/ap.py commits                    # коммиты сданных тасков ещё в истории?
     python3 .autopilot/ap.py                            # просто синхронизировать
 
-После каждой команды: updatedAt = сейчас (и метка в журнале beats), строка в ленте log,
-счётчики и список требований — из manifest.md, гейты G1–G4 — из событий, которые их решают,
+После каждой команды: updatedAt = сейчас (и метка в журнале beats), счётчики требований — из manifest.md,
 пройденные этапы закрыты, снимок вписан в dashboard.html, сервер жив. Время
 ставит сам скрипт, с секундами и поясом, — агент его не пишет никогда.
 
@@ -69,12 +65,6 @@ REPO = "nick-vels/skills"
 REMOTE_SKILL = "https://raw.githubusercontent.com/%s/main/skills/autopilot/SKILL.md" % REPO
 STOP_DELAY = 12
 BEATS_KEPT = 2000
-LOG_KEPT = 300
-QUOTE_MAX = 240
-WAIT_KINDS = ("briefing", "spec", "plan", "action", "stop")
-# Команды, которые значат «работа пошла дальше»: ожидание пользователя ими закрывается,
-# даже если `answered` забыли.
-MOVES_ON = {"stage", "ticket", "tickets", "check-plan", "coverage", "blind", "tests", "finish", "reopen"}
 ORDER = ["preflight", "manifest", "briefing", "spec", "plan", "build", "review", "final"]
 # Этап, чей результат лежит на диске, пройден — даже если его забыли отметить.
 ARTIFACT = {"manifest": "manifest.md", "spec": "spec.md", "plan": "tickets/*.md"}
@@ -108,7 +98,6 @@ def read_state():
 
 
 def save(state):
-    state["rev"] = (state.get("rev") or 0) + 1        # дашборд перерисовывается по нему
     tmp = STATE + ".tmp"
     with open(tmp, "w", encoding="utf-8") as f:
         f.write("window.STATE =\n" + json.dumps(state, ensure_ascii=False, indent=2) + "\n")
@@ -124,36 +113,6 @@ def beat(state):
     if state["updatedAt"] not in beats:
         beats.append(state["updatedAt"])
     del beats[:-BEATS_KEPT]
-
-
-def log(state, event, **kw):
-    """Лента событий для дашборда: что случилось, словами страницы, а не агента.
-    Пишет скрипт сам, по команде, — от агента ничего сверх обычного вызова не нужно."""
-    entry = {"t": state["updatedAt"], "k": event}
-    entry.update({k: v for k, v in kw.items() if v not in (None, "", [])})
-    state.setdefault("log", []).append(entry)
-    del state["log"][:-LOG_KEPT]
-
-
-def set_gate(state, g, ok, **kw):
-    """Гейт решается событием, которое его проверяет: G1 — открытием спецификации,
-    G2 — coverage, G3 — check-plan, G4 — blind. Повторная проверка перезаписывает."""
-    rec = {"ok": bool(ok), "at": state["updatedAt"]}
-    rec.update({k: v for k, v in kw.items() if v is not None})
-    state.setdefault("gates", {})[g] = rec
-    log(state, "gate", g=g, ok=bool(ok), **kw)
-
-
-def close_wait(state):
-    """Ожидание пользователя кончилось: интервал уходит в waits — часы дашборда
-    его не считают, это не работа сборки."""
-    w = state.get("waiting")
-    if not w:
-        return
-    state.setdefault("waits", []).append({"kind": w.get("kind"), "from": w.get("since"),
-                                          "to": state["updatedAt"]})
-    state["waiting"] = None
-    log(state, "answered", kind=w.get("kind"))
 
 
 def run_dir(state):
@@ -179,7 +138,6 @@ def fresh_state(a):
         "tickets": [], "tests": None,
         "debt": {"placeholders": [], "assumptions": [], "emptyEnv": []},
         "additions": [], "coverage": None, "concerns": [], "blind": None, "beats": [t],
-        "rev": 0, "waiting": None, "waits": [], "log": [], "reqList": [], "gates": {}, "result": None,
     }
 
 
@@ -195,47 +153,24 @@ STATUS_KEY = {"done": "done", "in-ticket": "inTicket", "in-spec": "inSpec",
               "placeholder": "placeholder", "deferred": "deferred", "dropped": "dropped"}
 
 
-def plain(cell):
-    """Ячейка манифеста как текст для страницы: без разметки, «\\|» — обратно в «|»."""
-    t = re.sub(r"\*+|`", "", cell.replace("\\|", "|")).strip()
-    return t if len(t) <= QUOTE_MAX else t[:QUOTE_MAX - 1].rstrip() + "…"
-
-
-def manifest_table(state):
-    """Строки manifest.md: ID в первой колонке, цитата во второй, статус в третьей,
-    основание в четвёртой."""
+def manifest_rows(state):
+    """[(id, status)] из таблицы manifest.md: ID в первой колонке, статус в третьей."""
     try:
         text = open(os.path.join(run_dir(state), "manifest.md"), encoding="utf-8").read()
     except OSError:
         return None
     rows = []
     for line in text.splitlines():
-        raw = cells_of(line)
-        cells = [c.strip().strip("`*") for c in raw]
+        cells = [c.strip().strip("`*") for c in cells_of(line)]
         if len(cells) >= 3 and ROW_ID.match(cells[0]):
-            rows.append({"id": cells[0], "text": plain(raw[1]) if len(raw) > 1 else "",
-                         "status": cells[2].split()[0].lower() if cells[2] else "open",
-                         "why": plain(raw[3]) if len(raw) > 3 else ""})
+            rows.append((cells[0], cells[2].split()[0].lower() if cells[2] else "open"))
     return rows
 
 
-def manifest_rows(state):
-    """[(id, status)] из таблицы manifest.md."""
-    rows = manifest_table(state)
-    return None if rows is None else [(r["id"], r["status"]) for r in rows]
-
-
 def recount(state):
-    table = manifest_table(state)
-    if table is None:
+    rows = manifest_rows(state)
+    if rows is None:
         return
-    # Список для страницы — слова пользователя и что с ними стало. Основание нужно
-    # только там, где требование не сделано как написано.
-    state["reqList"] = [dict({"id": r["id"], "text": r["text"], "status": r["status"]},
-                             **({"why": r["why"]} if r["status"] in ("placeholder", "deferred", "dropped")
-                                and r["why"] not in ("", "—", "-") else {}))
-                        for r in table if not r["id"].startswith("D")]
-    rows = [(r["id"], r["status"]) for r in table]
     rows = [(i, st) for i, st in rows if not i.startswith("D")]   # D## — ограничение, не требование
     r = {"total": len(rows), "done": 0, "inTicket": 0, "inSpec": 0,
          "placeholder": 0, "deferred": 0, "dropped": 0}
@@ -676,8 +611,6 @@ README_TEXT = """# Как читать эту папку
   - `<дата>-brief.md` — твоя задача слово в слово и «Дополнения» — всё, что ты сказал позже.
   - `manifest.md` — список требований и что с каждым стало.
   - `spec.md` — спецификация. `tickets/` — таски, на которые разбита сборка.
-- `PROGRESS.md` — что осталось после последней сборки: не доделано, известные баги,
-  о чём договорились. Мелкие правки без автопилота дописываются сюда же.
 
 Если сборка прервалась — скажи агенту «продолжи автопилот», он поднимет состояние отсюда.
 
@@ -771,7 +704,6 @@ def cmd_init(opt):
             os.replace(STATE, os.path.join(A, dst))
         notes.append("прошлый прогон убран в архив: %s" % dst)
     state = fresh_state(opt)
-    log(state, "init")
     os.makedirs(os.path.join(run_dir(state), "tickets"), exist_ok=True)
     save(state)
     ensure_gitignore()
@@ -806,13 +738,6 @@ def cmd_stage(state, pos, opt):
         die("действие этапа: start | done | skip | fail")
     if isinstance(opt.get("note"), str):
         s["note"] = opt["note"]
-    if sid == "spec" and action in ("start", "done"):
-        rows = [r for r in manifest_table(state) or [] if not r["id"].startswith("D")]
-        if rows:
-            n = sum(1 for r in rows if r["status"] == "open")
-            set_gate(state, "G1", n == 0, open=n, total=len(rows))
-    log(state, "stage", id=sid, act=action,
-        note=opt["note"] if action in ("skip", "fail") and isinstance(opt.get("note"), str) else None)
 
 
 def close_requirements(state, tk, opt, t):
@@ -870,8 +795,6 @@ def cmd_ticket(state, pos, opt):
             state["tests"] = tk["tests"]
         if isinstance(opt.get("commit"), str):
             tk["commit"] = opt["commit"][:12]
-    log(state, "ticket", ids=ids, act=act, tests=tests_pair(opt["tests"]) if opt.get("tests") else None,
-        note=opt["note"] if act in ("repair", "fail") and isinstance(opt.get("note"), str) else None)
 
 
 def cmd_set(state, pos):
@@ -890,10 +813,9 @@ def cmd_add(state, pos):
         tgt = state.setdefault("debt", {}).setdefault(key[5:], [])
     else:
         tgt = state.setdefault(key, [])
-    fresh = [v for v in vals if v not in tgt]
-    tgt.extend(dict.fromkeys(fresh))
-    if fresh:
-        log(state, "add", key=key, n=len(fresh))
+    for v in vals:
+        if v not in tgt:
+            tgt.append(v)
 
 
 def cmd_numbers(state, name, pos, multi):
@@ -903,28 +825,9 @@ def cmd_numbers(state, name, pos, multi):
         d[k] = int(v) if v.isdigit() else v
     if name == "blind":
         d["mismatches"] = multi.get("mismatch", [])
-        state[name] = d
-        set_gate(state, "G4", not d["mismatches"], checked=d.get("checked"), matched=d.get("matched"))
     else:
         d["items"] = multi.get("item", [])
-        state[name] = d
-        num = lambda k: d.get(k) if isinstance(d.get(k), int) else 0
-        set_gate(state, "G2", num("found") <= num("fixed") + num("deferred"),
-                 found=num("found"), fixed=num("fixed"), deferred=num("deferred"))
-
-
-def cmd_ask(state, pos, opt):
-    """Сборка ждёт пользователя: раунд брифинга, ручной гейт, вопрос перед необратимым."""
-    kind = pos[0] if pos else ""
-    if kind not in WAIT_KINDS:
-        die("ask <%s> --note \"что ждём, одной строкой\"" % "|".join(WAIT_KINDS))
-    w = state.get("waiting")
-    if w and w.get("kind") != kind:
-        close_wait(state)
-        w = None
-    note = opt.get("note") if isinstance(opt.get("note"), str) else None
-    state["waiting"] = {"kind": kind, "since": w["since"] if w else state["updatedAt"], "note": note}
-    log(state, "ask", kind=kind, note=note)
+    state[name] = d
 
 
 def cmd_finish(state, opt):
@@ -952,9 +855,7 @@ def cmd_finish(state, opt):
         else:
             notes.append("! не смог переименовать %s — оставляю как есть" % d)
     state["finishedAt"] = t
-    state["result"] = opt.get("result") if isinstance(opt.get("result"), str) else None
-    register_row(state, "сдан", state["result"])
-    log(state, "finish", result=state["result"])
+    register_row(state, "сдан", opt.get("result") if isinstance(opt.get("result"), str) else None)
     return notes
 
 
@@ -971,27 +872,7 @@ def cmd_reopen(state):
                 s.pop(k, None)
             s["status"] = "pending"
     stage(state, "manifest").update(status="active", startedAt=now())
-    state["result"] = None
-    state["gates"] = {}
     register_row(state, "в работе", None)
-    log(state, "reopen")
-
-
-def cmd_commits(state):
-    """Возобновление верит state.js, а история могла уйти из-под него: reset, rebase,
-    другая ветка. Сданный таск, чьего коммита нет в HEAD, — строка «!»; сбрасывает
-    его оркестратор, потому что код после rebase может лежать на месте под другим sha."""
-    notes = []
-    for tk in state.get("tickets") or []:
-        c = tk.get("commit")
-        if tk.get("status") != "done" or not c:
-            continue
-        r = subprocess.run(["git", "-C", ROOT, "merge-base", "--is-ancestor", c, "HEAD"],
-                           capture_output=True)
-        if r.returncode:
-            notes.append("! таск %s: коммита %s нет в истории — `ap.py ticket %s reset`"
-                         % (tk["id"], c, tk["id"]))
-    return notes or ["коммиты сданных тасков на месте"]
 
 
 def main():
@@ -1009,46 +890,32 @@ def main():
         if state is None:
             die("state.js ещё нет — начни с `ap.py init`")
         rest = pos[1:]
-        if cmd not in ("", "sync", "commits"):
-            # Время события ставится до команды: ей самой и ленте нужна одна метка.
-            state["updatedAt"] = now()
-            beat(state)
-        if cmd in MOVES_ON:
-            close_wait(state)
         if cmd == "stage":
             cmd_stage(state, rest, opt)
         elif cmd == "ticket":
             cmd_ticket(state, rest, opt)
         elif cmd == "tickets":
             notes.append(publish_tickets(state))
-            log(state, "tickets", n=len(state.get("tickets") or []))
         elif cmd == "check-plan":
             problems = check_plan(state)
             notes += ["! " + p for p in problems] or ["G3: трасса сходится"]
-            set_gate(state, "G3", not problems, problems=len(problems))
         elif cmd == "set":
             cmd_set(state, rest)
-            if any(p.startswith("tier=") for p in rest):
-                log(state, "tier", v=state.get("tier"))
         elif cmd == "add":
             cmd_add(state, rest)
         elif cmd in ("coverage", "blind"):
             cmd_numbers(state, cmd, rest, multi)
         elif cmd == "tests":
             state["tests"] = tests_pair(rest[0] if rest else "")
-            log(state, "tests", **state["tests"])
-        elif cmd == "ask":
-            cmd_ask(state, rest, opt)
-        elif cmd == "answered":
-            close_wait(state)
         elif cmd == "finish":
             notes = cmd_finish(state, opt)
         elif cmd == "reopen":
             cmd_reopen(state)
-        elif cmd == "commits":
-            notes = cmd_commits(state)
         elif cmd not in ("", "sync"):
             die("неизвестная команда %s — список в начале ap.py" % cmd)
+        if cmd not in ("", "sync"):
+            state["updatedAt"] = now()
+            beat(state)
     recount(state)
     notes = close_passed(state) + notes
     save(state)

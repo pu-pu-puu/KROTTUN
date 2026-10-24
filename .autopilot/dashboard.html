@@ -5,330 +5,252 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>autopilot</title>
 <style>
-  /* Цвет здесь — сигнал, а не украшение: у каждого состояния сборки свой.
-     Синий — идёт работа, оранжевый — ждём человека или таск пишется,
-     зелёный — сдано, бирюзовый — проверка, фиолетовый — ремонт, красный — упало. */
-  :root{
-    --bg:#F2F2F4; --card:#fff; --inset:#F4F4F6; --soft:#EBEBEE; --line:rgba(0,0,0,.07); --line2:rgba(0,0,0,.11);
-    --tx:#111113; --tx2:#3A3A3C; --mut:#6B6B70; --quiet:#8E8E93;
-    --hero:#2F45E0; --hero-shadow:rgba(40,60,220,.55);
-    --done:#17864A; --done-soft:#E2F3E9; --done-tx:#126B3B;
-    --now:#FF6B35; --now-on:#1A0D06; --now-soft:#FFE9DF; --now-tx:#AD3D0E;
-    --rev:#0B7F8A; --rev-soft:#DDF2F4; --rev-tx:#08666F;
-    --fix:#7C3AED; --fix-soft:#EFE7FE; --fix-tx:#6427D0;
-    --bad:#DC2626; --bad-soft:#FDE6E6; --bad-tx:#B01C1C;
-    --idle:#D4D4D9; --logo-filter:none;
-    --sh:0 1px 2px rgba(0,0,0,.04),0 12px 30px -20px rgba(20,24,40,.2);
-    --sh-raised:0 1px 2px rgba(0,0,0,.035),0 16px 36px -24px rgba(20,24,40,.24);
+  :root, :root[data-theme="light"]{
+    --bg:#fbfbfa; --panel:#fff; --ink:#16150f; --dim:#6b6a63; --line:#e4e3dd;
+    --accent:#111; --ok:#1f7a4d; --warn:#a8700a; --bad:#b3352b; --ghost:#eeede8; --info:#2f6690;
+    --fix:#6f4a9e;
+    --radius:14px; --logo-light:block; --logo-dark:none; --glow:rgba(168,112,10,.38);
   }
   @media (prefers-color-scheme:dark){
     :root:not([data-theme]){
-      --bg:#17181B; --card:#222327; --inset:#2C2D32; --soft:#323338; --line:rgba(255,255,255,.08); --line2:rgba(255,255,255,.14);
-      --tx:#F2F2F3; --tx2:#C7C7CC; --mut:#A3A3AA; --quiet:#85858C;
-      --hero:#2639C2; --hero-shadow:rgba(0,0,0,.7);
-      --done:#1E9A56; --done-soft:#1C3527; --done-tx:#5BD68C;
-      --now-soft:#43271C; --now-tx:#FF8A5C;
-      --rev:#0E8A96; --rev-soft:#163538; --rev-tx:#6FD6E0;
-      --fix:#8B4DF5; --fix-soft:#2F2448; --fix-tx:#BFA2FF;
-      --bad:#E5383B; --bad-soft:#47201F; --bad-tx:#FF8B8B;
-      --idle:#4A4B51; --logo-filter:invert(1);
-      --sh:0 1px 0 rgba(255,255,255,.03) inset,0 12px 30px -20px rgba(0,0,0,.75);
-      --sh-raised:0 16px 36px -24px rgba(0,0,0,.8);
-      color-scheme:dark;
+      --bg:#141412; --panel:#1c1c19; --ink:#f2f1ea; --dim:#918f86; --line:#2e2e29;
+      --accent:#f2f1ea; --ok:#4bbd84; --warn:#d9a341; --bad:#e0685c; --ghost:#262622; --info:#7aa8d4;
+      --fix:#b18ad9;
+      --glow:rgba(217,163,65,.45);
+      --logo-light:none; --logo-dark:block;
     }
   }
   :root[data-theme="dark"]{
-    --bg:#17181B; --card:#222327; --inset:#2C2D32; --soft:#323338; --line:rgba(255,255,255,.08); --line2:rgba(255,255,255,.14);
-    --tx:#F2F2F3; --tx2:#C7C7CC; --mut:#A3A3AA; --quiet:#85858C;
-    --hero:#2639C2; --hero-shadow:rgba(0,0,0,.7);
-    --done:#1E9A56; --done-soft:#1C3527; --done-tx:#5BD68C;
-    --now-soft:#43271C; --now-tx:#FF8A5C;
-    --rev:#0E8A96; --rev-soft:#163538; --rev-tx:#6FD6E0;
-    --fix:#8B4DF5; --fix-soft:#2F2448; --fix-tx:#BFA2FF;
-    --bad:#E5383B; --bad-soft:#47201F; --bad-tx:#FF8B8B;
-    --idle:#4A4B51; --logo-filter:invert(1);
-    --sh:0 1px 0 rgba(255,255,255,.03) inset,0 12px 30px -20px rgba(0,0,0,.75);
-    --sh-raised:0 16px 36px -24px rgba(0,0,0,.8);
-    color-scheme:dark;
+    --bg:#141412; --panel:#1c1c19; --ink:#f2f1ea; --dim:#918f86; --line:#2e2e29;
+    --accent:#f2f1ea; --ok:#4bbd84; --warn:#d9a341; --bad:#e0685c; --ghost:#262622; --info:#7aa8d4;
+    --fix:#b18ad9;
+    --logo-light:none; --logo-dark:block;
   }
   *{box-sizing:border-box}
-  [hidden]{display:none!important}
-  html{-webkit-text-size-adjust:100%}
-  body{margin:0;background:var(--bg);color:var(--tx);
-    font:15px/1.5 -apple-system,BlinkMacSystemFont,"SF Pro Text","Segoe UI",system-ui,sans-serif;
-    -webkit-font-smoothing:antialiased;font-synthesis-weight:none}
-  ::selection{background:rgba(255,107,53,.25)}
-  :focus-visible{outline:2px solid var(--now);outline-offset:3px}
-  code,.mono{font-family:ui-monospace,"SF Mono",Menlo,Consolas,monospace}
-  .tnum,.big b,.tv,.s-time,.tl-time,.ev em{font-variant-numeric:tabular-nums}
-  .wrap{max-width:1320px;margin:0 auto;padding:22px 32px 40px;display:flex;flex-direction:column;gap:20px;min-width:0}
-  .card{background:var(--card);border:1px solid var(--line);border-radius:26px;box-shadow:var(--sh);padding:24px 26px;min-width:0}
-  .ic{width:16px;height:16px;flex:0 0 auto;fill:none;stroke:currentColor;stroke-width:1.9;stroke-linecap:round;stroke-linejoin:round}
-  .ic.xs{width:14px;height:14px;stroke-width:2.6}
-  .ic.m{width:20px;height:20px}
-  .wt{font-size:17px;font-weight:650;letter-spacing:-.01em;margin:0;line-height:1.3;display:flex;align-items:center;gap:10px}
-  .whead{display:flex;align-items:baseline;justify-content:space-between;gap:8px 12px;margin-bottom:16px;flex-wrap:wrap}
-  .whead>span{font-size:14px;color:var(--mut)}
-
-  /* ── верх ─────────────────────────────────────────────────── */
-  .top{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap}
-  .logo{height:34px;width:auto;display:block;filter:var(--logo-filter)}
-  .tools{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
-  .tabs{display:inline-flex;gap:2px;padding:3px;border-radius:999px;background:var(--card);border:1px solid var(--line);box-shadow:var(--sh-raised)}
-  .tabs button,.iconbtn{appearance:none;border:0;font:inherit;cursor:pointer;display:inline-flex;align-items:center;justify-content:center}
-  .tabs button{height:36px;min-width:40px;padding:0 12px;border-radius:999px;background:transparent;color:var(--mut);font-size:13.5px;font-weight:650;transition:background .2s,color .2s}
-  .tabs button:hover{color:var(--tx)}
-  .tabs button[aria-pressed="true"]{background:var(--tx);color:var(--card)}
-  .iconbtn{width:44px;height:44px;border-radius:999px;border:1px solid var(--line);background:var(--card);box-shadow:var(--sh-raised);color:var(--tx);transition:transform .15s}
-  .iconbtn:active{transform:scale(.96)}
+  body{margin:0;background:var(--bg);color:var(--ink);
+    font:15px/1.5 ui-sans-serif,-apple-system,"Segoe UI",Roboto,"Helvetica Neue",sans-serif;
+    -webkit-font-smoothing:antialiased;padding:34px 20px 60px}
+  .wrap{max-width:1040px;margin:0 auto;min-width:0}
+  /* wrap на .top: в узкой панели переключатели уходят на вторую строку, а не за край */
+  .top{display:flex;align-items:flex-start;gap:16px;margin-bottom:8px;flex-wrap:wrap}
+  .logo{height:clamp(44px,7vw,72px);width:auto;max-width:64vw}
+  .logo.l{display:var(--logo-light)} .logo.d{display:var(--logo-dark)}
+  .segs{margin-left:auto;display:flex;gap:8px;flex:0 0 auto}
+  .seg{display:flex;border:1px solid var(--line);border-radius:999px;overflow:hidden}
+  .seg button{appearance:none;border:0;background:transparent;color:var(--dim);cursor:pointer;
+    font:600 11px/1 inherit;letter-spacing:.08em;padding:8px 12px;display:flex;align-items:center}
+  .seg button:hover{color:var(--ink)}
+  .seg button[aria-pressed="true"]{background:var(--accent);color:var(--bg)}
+  .seg svg{width:13px;height:13px;display:block}
   /* «Обновить сейчас»: пока state.js грузится, стрелка крутится — нажатие видно */
-  .iconbtn.busy svg{animation:spin .8s linear infinite}
+  .seg button.busy svg{animation:spin .8s linear infinite}
   @keyframes spin{to{transform:rotate(360deg)}}
-  .title h1{margin:0;font-size:32px;line-height:1.12;font-weight:700;letter-spacing:-.03em;text-wrap:balance;overflow-wrap:anywhere}
-  .meta{display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin-top:12px}
-  .tag{display:inline-flex;align-items:center;height:28px;padding:0 11px;border-radius:999px;background:var(--card);border:1px solid var(--line2);font-size:13px;font-weight:600;color:var(--tx2)}
-  .meta .when{font-size:14px;color:var(--mut);margin-left:4px}
-  #link{background:var(--now);color:var(--now-on);border-radius:18px;padding:14px 18px;font-weight:600;font-size:14.5px;line-height:1.45;margin-bottom:0}
-  .lost{max-width:1320px;margin:0 auto;padding:16px 32px 0}
-
-  /* ── шапка состояния ─────────────────────────────────────────── */
-  .hero{--h-tx:#fff;--h-mut:rgba(255,255,255,.82);--h-track:rgba(255,255,255,.24);
-    border-radius:28px;padding:28px 30px 26px;display:flex;flex-direction:column;gap:28px;
-    background:var(--hero);color:var(--h-tx);box-shadow:0 30px 60px -32px var(--hero-shadow);min-width:0}
-  .hero.ask{background:#FF6B35;--h-tx:#1A0D06;--h-mut:rgba(26,13,6,.74);--h-track:rgba(26,13,6,.16);box-shadow:0 30px 60px -30px rgba(200,70,20,.6)}
-  .hero.won{background:#17864A;--h-track:rgba(255,255,255,.22);box-shadow:0 30px 60px -30px rgba(23,134,74,.6)}
-  .hero.bad{background:#C81E1E;--h-track:rgba(255,255,255,.22);box-shadow:0 30px 60px -30px rgba(200,30,30,.55)}
-  .hero-top{display:flex;flex-wrap:wrap;justify-content:space-between;align-items:flex-end;gap:20px 40px}
-  .hero-main{flex:1 1 420px;min-width:0}
-  .state{display:inline-flex;align-items:center;gap:9px;font-size:14px;font-weight:700;margin-bottom:12px}
-  .hero h2{margin:0;font-size:34px;line-height:1.1;font-weight:700;letter-spacing:-.03em;text-wrap:balance;max-width:32ch;overflow-wrap:anywhere}
-  .lead{margin:12px 0 0;font-size:16.5px;line-height:1.5;color:var(--h-mut);max-width:64ch}
-  .lead b{color:var(--h-tx);font-weight:650}
-  .big{text-align:right;flex:0 0 auto}
-  .big b{display:block;font-size:58px;line-height:.95;font-weight:700;letter-spacing:-.045em}
-  .big b small{font-size:24px;letter-spacing:-.02em;font-weight:600;margin-left:6px}
-  .big>span{display:block;font-size:14px;color:var(--h-mut);margin-top:10px}
-  .big .paused{display:block;margin-top:6px;font-weight:650;color:var(--h-tx)}
-  .hint{display:inline-flex;align-items:center;gap:10px;margin-top:18px;min-height:44px;padding:8px 18px;border-radius:22px;background:#1A0D06;color:#fff;font-size:15px;font-weight:600;line-height:1.35}
-  .track{display:grid;grid-template-columns:repeat(8,minmax(0,1fr));gap:5px}
-  .seg{height:12px;border-radius:4px;background:var(--h-track);overflow:hidden}
-  .seg i{display:block;height:100%;border-radius:4px}
-  .s-done .seg i{width:100%;background:#21A35B}
-  .hero.won .s-done .seg i,.hero.bad .s-done .seg i{background:#fff}
-  .hero.ask .s-done .seg i{background:#1A0D06}
-  .s-now .seg i{background-color:var(--now)}
-  .hero.ask .s-now .seg i{background-color:#fff}
-  .s-fail .seg i{width:100%;background:#fff}
-  .s-skip .seg{background:repeating-linear-gradient(135deg,var(--h-track) 0 4px,transparent 4px 8px)}
-  .s-name{display:block;margin-top:10px;font-size:13px;font-weight:600;line-height:1.3}
-  .s-now .s-name,.s-fail .s-name{font-weight:750}
-  .s-pend .s-name,.s-skip .s-name{color:var(--h-mut);font-weight:500}
-  .s-time{display:block;margin-top:2px;font-size:12.5px;color:var(--h-mut)}
-  .live{width:9px;height:9px;border-radius:50%;background:var(--now);outline:2px solid rgba(255,255,255,.9);display:inline-block;flex:0 0 auto;animation:pulse 1.8s cubic-bezier(.16,1,.3,1) infinite}
-  .hero.ask .live{background:#1A0D06;outline:0}
-  @keyframes pulse{0%{box-shadow:0 0 0 0 rgba(255,107,53,.6)}70%{box-shadow:0 0 0 9px rgba(255,107,53,0)}100%{box-shadow:0 0 0 0 rgba(255,107,53,0)}}
-  .badge-ic{width:26px;height:26px;border-radius:50%;background:#fff;display:inline-flex;align-items:center;justify-content:center}
-  .hero.won .badge-ic{color:#17864A}.hero.bad .badge-ic{color:#C81E1E}
-  .stripes{background-image:linear-gradient(135deg,rgba(255,255,255,.28) 25%,transparent 25%,transparent 50%,rgba(255,255,255,.28) 50%,rgba(255,255,255,.28) 75%,transparent 75%,transparent);background-size:22px 22px;animation:stripes 1.1s linear infinite}
-  .hero.ask .stripes{background-image:linear-gradient(135deg,rgba(255,107,53,.5) 25%,transparent 25%,transparent 50%,rgba(255,107,53,.5) 50%,rgba(255,107,53,.5) 75%,transparent 75%,transparent)}
-  @keyframes stripes{to{background-position:22px 0}}
-
-  /* ── плитки ───────────────────────────────────────────────── */
-  .tiles{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:20px}
-  .tile{display:flex;flex-direction:column;gap:11px;padding:20px 22px}
-  .tk{font-size:13.5px;font-weight:600;color:var(--mut)}
-  .tv{font-size:38px;line-height:1;font-weight:700;letter-spacing:-.04em}
-  .tv small{font-size:17px;font-weight:600;color:var(--mut);letter-spacing:-.01em;margin-left:4px}
-  .tv.dim{color:var(--quiet)}
-  .ts{font-size:13px;color:var(--mut);line-height:1.4}
-  .stack{display:flex;height:10px;border-radius:5px;overflow:hidden;gap:2px;background:var(--inset)}
-  .stack i{display:block;height:100%}
-  .sq{display:flex;gap:5px;flex-wrap:wrap}
-  .sq i{width:18px;height:18px;border-radius:5px;display:block}
-  .okb{display:inline-flex;align-items:center;gap:6px;height:26px;padding:0 10px;border-radius:999px;font-size:12.5px;font-weight:700;align-self:flex-start;color:#fff}
-
-  /* ── цвета статусов ───────────────────────────────────────── */
-  .f-done{background:var(--done);color:#fff}
-  .f-now{background-color:var(--now);color:var(--now-on)}
-  .f-rev{background:var(--rev);color:#fff}
-  .f-fix{background:var(--fix);color:#fff}
-  .f-bad{background:var(--bad);color:#fff}
-  .f-wait{background:transparent;color:var(--mut);border:1.5px dashed var(--idle)}
-  .f-idle{background:var(--idle)}
-  .f-q{background:var(--quiet)}
-
-  /* ── ход сборки ───────────────────────────────────────────── */
-  .legend{display:flex;flex-wrap:wrap;gap:6px}
-  .lg{display:inline-flex;align-items:center;gap:7px;height:30px;padding:0 11px 0 9px;border-radius:999px;background:var(--inset);font-size:13px;font-weight:600;color:var(--tx2)}
-  .lg i{width:11px;height:11px;border-radius:3px;display:block}
-  .lg b{font-weight:750;color:var(--tx)}
-  .wave{display:flex;flex-wrap:wrap;align-items:baseline;gap:4px 8px;font-size:12px;font-weight:750;letter-spacing:.05em;text-transform:uppercase;color:var(--quiet);margin:18px 0 8px}
-  .whead+.wave{margin-top:4px}
-  .wave span{text-transform:none;letter-spacing:0;font-weight:500;font-size:13px}
-  .tl{display:grid;grid-template-columns:32px minmax(0,1fr) 64px;gap:4px 12px;align-items:center;margin-bottom:7px}
-  .tl-id{font-size:14.5px;font-weight:750;color:var(--quiet)}
-  .tl-id.on{color:var(--tx)}
-  .bar{height:42px;border-radius:12px;display:flex;align-items:center;justify-content:space-between;gap:10px;padding:0 6px 0 15px;font-size:14.5px;font-weight:650;min-width:0}
-  .bar .nm{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0}
-  .chipin{flex:0 0 auto;display:inline-flex;align-items:center;gap:6px;height:30px;padding:0 10px;border-radius:999px;background:rgba(255,255,255,.2);font-size:12.5px;font-weight:700;white-space:nowrap}
-  .f-now .chipin{background:rgba(26,13,6,.12)}
-  .f-wait .chipin{background:var(--inset);color:var(--mut)}
-  .tl-time{font-size:13.5px;font-weight:650;text-align:right;color:var(--mut);white-space:nowrap}
-  .tl-time.now{color:var(--now-tx)}.tl-time.fix{color:var(--fix-tx)}.tl-time.rev{color:var(--rev-tx)}.tl-time.bad{color:var(--bad-tx)}
-  .tl-note{grid-column:2/4;display:flex;gap:8px;align-items:flex-start;font-size:13.5px;line-height:1.45;padding:1px 2px 6px;overflow-wrap:anywhere}
-  .tl-note.fix{color:var(--fix-tx)}.tl-note.rev{color:var(--rev-tx)}.tl-note.bad{color:var(--bad-tx)}
-  .tl-note .ic{margin-top:2px}
-
-  /* ── колонки и списки ─────────────────────────────────────── */
-  .cols{display:grid;grid-template-columns:minmax(0,2fr) minmax(0,1fr);gap:20px;align-items:start}
-  .col{display:flex;flex-direction:column;gap:20px;min-width:0}
-  .chips{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:10px}
-  .chip{appearance:none;height:36px;padding:0 14px;border-radius:999px;border:0;background:var(--soft);color:var(--tx);font:inherit;font-size:13.5px;font-weight:600;cursor:pointer;display:inline-flex;align-items:center;gap:7px}
-  .chip i{width:9px;height:9px;border-radius:3px;display:block}
-  .chip span{color:var(--mut);font-weight:500}
-  .chip[aria-pressed="true"]{background:var(--tx);color:var(--card)}
-  .chip[aria-pressed="true"] span{color:inherit;opacity:.7}
-  .req{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:14px;align-items:center;padding:12px 0;border-top:1px solid var(--line)}
-  .req p{margin:0;font-size:15px;line-height:1.45;overflow-wrap:anywhere}
-  .rid{display:inline-block;min-width:40px;font-size:12px;color:var(--quiet);font-weight:750}
-  .why{display:block;font-size:13px;color:var(--mut);margin-top:3px;padding-left:40px;line-height:1.45}
-  .pill{display:inline-flex;align-items:center;height:26px;padding:0 10px;border-radius:999px;font-size:12.5px;font-weight:700;white-space:nowrap}
-  .p-done{background:var(--done-soft);color:var(--done-tx)}
-  .p-now{background:var(--now-soft);color:var(--now-tx)}
-  .p-mut{background:var(--inset);color:var(--mut)}
-  .p-bad{background:var(--bad-soft);color:var(--bad-tx)}
-  .more{margin-top:2px;padding-top:12px;border-top:1px solid var(--line)}
-  .btn-soft{appearance:none;height:38px;padding:0 15px;border-radius:999px;border:0;background:var(--soft);color:var(--tx);font:inherit;font-size:13.5px;font-weight:600;cursor:pointer;display:inline-flex;align-items:center;gap:6px}
-  .gate{display:grid;grid-template-columns:32px minmax(0,1fr) auto;gap:12px;align-items:start;padding:12px 0;border-top:1px solid var(--line)}
-  .whead+.gate{border-top:0;padding-top:0}
-  .gi{width:32px;height:32px;border-radius:50%;display:flex;align-items:center;justify-content:center}
-  .gi.ok{background:var(--done);color:#fff}
-  .gi.wait{color:var(--quiet);border:1.5px dashed var(--idle)}
-  .gi.warn{background:var(--now);color:var(--now-on)}
-  .gi.bad{background:var(--bad);color:#fff}
-  .gt{font-size:15px;font-weight:650;line-height:1.35}
-  .gs{font-size:13px;color:var(--mut);margin-top:2px;line-height:1.45}
-  .gk{font-size:12px;font-weight:750;color:var(--quiet);padding-top:3px}
-  .ev{display:grid;grid-template-columns:26px minmax(0,1fr) auto;gap:11px;align-items:start;padding:9px 0;font-size:14px;line-height:1.45;border-top:1px solid var(--line)}
-  .whead+.ev{border-top:0;padding-top:0}
-  .ei{width:26px;height:26px;border-radius:8px;display:flex;align-items:center;justify-content:center;background:var(--inset);color:var(--mut)}
-  .ev>span{padding-top:2px;overflow-wrap:anywhere}
-  .ev em{font-style:normal;font-size:12.5px;color:var(--quiet);white-space:nowrap;padding-top:3px}
-  .need{padding:13px 0;border-top:1px solid var(--line)}
-  .whead+.need{border-top:0;padding-top:0}
-  .nh{display:flex;justify-content:space-between;align-items:baseline;gap:8px;font-size:15px;font-weight:650}
-  .nh span{font-size:14px;font-weight:600;color:var(--mut)}
-  .keys{display:flex;flex-wrap:wrap;gap:6px;margin-top:10px}
-  .key{font-size:12.5px;padding:5px 9px;border-radius:9px;background:var(--inset);color:var(--tx2);overflow-wrap:anywhere}
-  .nl{margin:8px 0 0;padding:0;list-style:none;font-size:14px;color:var(--tx2);line-height:1.45}
-  .nl li{overflow-wrap:anywhere}
-  .nl li+li{margin-top:7px}
-  .nl.n0{margin-top:0}
-  .nl+.btn-soft{margin-top:12px}
-  .prep{border:2px solid var(--now)}
-  .prep .wt i{width:28px;height:28px;border-radius:8px;background:var(--now);color:var(--now-on);display:inline-flex;align-items:center;justify-content:center}
-  .blind-top{display:flex;align-items:center;gap:18px;margin-bottom:6px;flex-wrap:wrap}
-  .blind-top b{font-size:38px;font-weight:700;letter-spacing:-.04em;line-height:1}
-  .blind-top b small{font-size:17px;color:var(--mut);font-weight:600;margin-left:4px}
-  .blind-top p{margin:0;flex:1 1 260px;font-size:14px;line-height:1.5;color:var(--mut)}
-  .empty{display:flex;gap:12px;align-items:flex-start;padding:16px 18px;border-radius:16px;border:1.5px dashed var(--idle);font-size:14.5px;line-height:1.5;color:var(--tx2)}
-  .empty .ic{color:var(--mut);margin-top:3px}
-  .muted{color:var(--mut);font-size:14px;line-height:1.5;margin:0}
-  footer{display:flex;flex-wrap:wrap;justify-content:space-between;gap:6px 20px;font-size:13px;color:var(--mut);padding:2px 4px 0}
-  footer code{font-size:12.5px;color:var(--tx2);overflow-wrap:anywhere}
-  .stale{color:var(--now-tx);font-weight:650}
-
-  /* Появление — один раз, при первой отрисовке: страница перерисовывается
-     на каждом событии сборки, и анимация на каждом круге мигала бы. */
-  .boot .w{animation:rise .8s cubic-bezier(.16,1,.3,1) both}
-  .boot .w:nth-child(2){animation-delay:.05s}.boot .w:nth-child(3){animation-delay:.1s}
-  @keyframes rise{from{transform:translateY(10px);filter:blur(5px);opacity:.01}to{transform:none;filter:none;opacity:1}}
-  @media (prefers-reduced-motion:reduce){.boot .w,.live,.stripes,.iconbtn.busy svg{animation:none}}
-
-  /* ── ширина ───────────────────────────────────────────────── */
-  @media (max-width:1180px){.tiles{grid-template-columns:repeat(2,minmax(0,1fr))}}
-  @media (max-width:1040px){.cols{grid-template-columns:minmax(0,1fr)}}
-  /* Узкая панель рядом с чатом — главный способ смотреть дашборд. Здесь всё
-     плотнее: те же блоки, но цифры и полосы под ширину 380–900 px, а не экрана. */
-  @media (max-width:900px){
-    body{font-size:14px}
-    .wrap{padding:14px 14px 28px;gap:12px}
-    .lost{padding:12px 14px 0}
-    .logo{height:24px}
-    .tabs button{height:30px;min-width:34px;padding:0 9px;font-size:12.5px}
-    .iconbtn{width:36px;height:36px}
-    .title h1{font-size:21px;letter-spacing:-.02em}
-    .meta{margin-top:8px;gap:6px}
-    .tag{height:24px;padding:0 9px;font-size:12px}
-    .meta .when{font-size:12.5px}
-    .card{padding:16px;border-radius:18px}
-    .wt{font-size:15px}
-    .whead{margin-bottom:12px}
-    .whead>span{font-size:12.5px}
-    .hero{padding:18px 18px 16px;border-radius:20px;gap:18px}
-    .hero-top{gap:14px;align-items:flex-start}
-    .hero-main{flex-basis:100%}
-    .state{font-size:12.5px;margin-bottom:8px}
-    .hero h2{font-size:21px;letter-spacing:-.02em;max-width:none}
-    .lead{font-size:14px;margin-top:8px}
-    .big{text-align:left}
-    .big b{font-size:30px;letter-spacing:-.03em}
-    .big b small{font-size:15px}
-    .big>span{font-size:12.5px;margin-top:4px}
-    .hint{font-size:13.5px;margin-top:12px;padding:8px 14px;min-height:38px}
-    .track{grid-template-columns:repeat(4,minmax(0,1fr));gap:12px 4px}
-    .seg{height:8px;border-radius:3px}
-    .s-name{font-size:12px;margin-top:6px}
-    .s-time{font-size:11.5px}
-    .tiles{gap:12px}
-    .tile{padding:14px;gap:8px}
-    .tk{font-size:12.5px}
-    .tv{font-size:24px;letter-spacing:-.03em}
-    .tv small{font-size:13px}
-    .ts{font-size:12px}
-    .stack{height:7px}
-    .sq{gap:4px}.sq i{width:13px;height:13px;border-radius:4px}
-    .okb{height:22px;font-size:11.5px;padding:0 8px}
-    .lg{height:26px;font-size:12px;padding:0 9px 0 8px}
-    .wave{font-size:11px;margin:14px 0 6px}
-    .wave span{font-size:12px}
-    .tl{grid-template-columns:22px minmax(0,1fr) 44px;gap:3px 8px;margin-bottom:5px}
-    .tl-id{font-size:12.5px}
-    .bar{height:32px;border-radius:9px;font-size:13px;padding:0 4px 0 11px;gap:6px}
-    .chipin{height:24px;padding:0 7px;font-size:11.5px}
-    .chipin .lbl{display:none}
-    .tl-time{font-size:12px}
-    .tl-note{font-size:12.5px}
-    .chip{height:30px;padding:0 11px;font-size:12.5px}
-    .req{padding:10px 0;gap:10px}
-    .req p{font-size:13.5px}
-    .why{padding-left:0;font-size:12.5px}
-    .rid{min-width:34px;font-size:11.5px}
-    .pill{height:22px;font-size:11.5px;padding:0 8px}
-    .gate{grid-template-columns:26px minmax(0,1fr) auto;padding:10px 0;gap:10px}
-    .gi{width:26px;height:26px}
-    .gt{font-size:13.5px}.gs{font-size:12px}
-    .ev{grid-template-columns:22px minmax(0,1fr) auto;font-size:13px;gap:9px}
-    .ei{width:22px;height:22px;border-radius:7px}
-    .nh{font-size:13.5px}.nl{font-size:13px}
-    .key{font-size:11.5px}
-    .btn-soft{height:32px;font-size:12.5px}
-    .blind-top b{font-size:26px}
-    .empty{font-size:13.5px;padding:12px 14px}
-    footer{font-size:12px}
+  @media (prefers-reduced-motion:reduce){.seg button.busy svg{animation:none;opacity:.5}}
+  #link{margin-bottom:14px;color:var(--warn);border-color:var(--warn)}
+  header{display:flex;flex-wrap:wrap;gap:12px;align-items:baseline;margin-bottom:22px}
+  h1{font-size:17px;font-weight:600;margin:0;letter-spacing:-.01em}
+  .badges{margin-left:auto;display:flex;gap:6px;flex-wrap:wrap}
+  .badge{font-size:11px;letter-spacing:.04em;text-transform:uppercase;font-weight:600;
+    border:1px solid var(--bd,var(--line));border-radius:999px;padding:3px 10px;
+    color:var(--fg,var(--dim));background:var(--bbg,transparent)}
+  /* режим — синяя семья, насыщенность растёт с автономией */
+  .b-mode-1{--bbg:#eff4fb;--bd:#cfdcef;--fg:#4a6d9e}
+  .b-mode-2{--bbg:#e9f0fa;--bd:#c3d4eb;--fg:#3d6293}
+  .b-mode-3{--bbg:#e3ecf9;--bd:#b6cce8;--fg:#2f5688}
+  .b-mode-4{--bbg:#d6e3f6;--bd:#9dbbe0;--fg:#1f4374}
+  /* глубина — фиолетовая семья */
+  .b-depth-1{--bbg:#f4f0fa;--bd:#ddd2ee;--fg:#6b559b}
+  .b-depth-2{--bbg:#ece5f7;--bd:#cbbbe6;--fg:#573f8b}
+  .b-depth-3{--bbg:#e2d8f3;--bd:#b8a3dd;--fg:#452f78}
+  /* ярус — охра, насыщенность растёт с объёмом работы */
+  .b-tier-0{--bbg:#f7f3e8;--bd:#e5dbc3;--fg:#7d6b45}
+  .b-tier-1{--bbg:#f3ecdb;--bd:#dbcda9;--fg:#6e5c34}
+  .b-tier-2{--bbg:#eee4cb;--bd:#cfbc8d;--fg:#5f4d26}
+  .b-tier-3{--bbg:#e8dbb9;--bd:#c2ab72;--fg:#50401b}
+  .b-done{--bbg:#e8f3ec;--bd:#b6d9c4;--fg:#1f7a4d}
+  @media (prefers-color-scheme:dark){
+    :root:not([data-theme]) .b-mode-1{--bbg:#1a2333;--bd:#2a3a52;--fg:#9cbbe6}
+    :root:not([data-theme]) .b-mode-2{--bbg:#1b263a;--bd:#2e405e;--fg:#a5c3ec}
+    :root:not([data-theme]) .b-mode-3{--bbg:#1c2942;--bd:#31466a;--fg:#aecbf2}
+    :root:not([data-theme]) .b-mode-4{--bbg:#1f2f4f;--bd:#3a5482;--fg:#c0d8fb}
+    :root:not([data-theme]) .b-depth-1{--bbg:#221d32;--bd:#372e4f;--fg:#b8a6e0}
+    :root:not([data-theme]) .b-depth-2{--bbg:#26203b;--bd:#40345c;--fg:#c5b3ec}
+    :root:not([data-theme]) .b-depth-3{--bbg:#2b2346;--bd:#4b3b6c;--fg:#d3c2f7}
+    :root:not([data-theme]) .b-tier-0{--bbg:#26221a;--bd:#3b3527;--fg:#cbb98d}
+    :root:not([data-theme]) .b-tier-1{--bbg:#2a2519;--bd:#443b26;--fg:#d6c393}
+    :root:not([data-theme]) .b-tier-2{--bbg:#2f2917;--bd:#4e4227;--fg:#e2cd97}
+    :root:not([data-theme]) .b-tier-3{--bbg:#352d16;--bd:#58492a;--fg:#edd79c}
+    :root:not([data-theme]) .b-done{--bbg:#16281f;--bd:#26432f;--fg:#4bbd84}
   }
-  @media (max-width:440px){
-    .hero h2{font-size:19px}
-    .tiles{grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
-    .tv{font-size:22px}
-    .req{grid-template-columns:minmax(0,1fr)}
-    .req .pill{justify-self:start}
+  :root[data-theme="dark"] .b-mode-1{--bbg:#1a2333;--bd:#2a3a52;--fg:#9cbbe6}
+  :root[data-theme="dark"] .b-mode-2{--bbg:#1b263a;--bd:#2e405e;--fg:#a5c3ec}
+  :root[data-theme="dark"] .b-mode-3{--bbg:#1c2942;--bd:#31466a;--fg:#aecbf2}
+  :root[data-theme="dark"] .b-mode-4{--bbg:#1f2f4f;--bd:#3a5482;--fg:#c0d8fb}
+  :root[data-theme="dark"] .b-depth-1{--bbg:#221d32;--bd:#372e4f;--fg:#b8a6e0}
+  :root[data-theme="dark"] .b-depth-2{--bbg:#26203b;--bd:#40345c;--fg:#c5b3ec}
+  :root[data-theme="dark"] .b-depth-3{--bbg:#2b2346;--bd:#4b3b6c;--fg:#d3c2f7}
+  :root[data-theme="dark"] .b-tier-0{--bbg:#26221a;--bd:#3b3527;--fg:#cbb98d}
+  :root[data-theme="dark"] .b-tier-1{--bbg:#2a2519;--bd:#443b26;--fg:#d6c393}
+  :root[data-theme="dark"] .b-tier-2{--bbg:#2f2917;--bd:#4e4227;--fg:#e2cd97}
+  :root[data-theme="dark"] .b-tier-3{--bbg:#352d16;--bd:#58492a;--fg:#edd79c}
+  :root[data-theme="dark"] .b-done{--bbg:#16281f;--bd:#26432f;--fg:#4bbd84}
+  /* minmax(min(Npx,100%)): в колонке уже 200px карточка сжимается, а не вылезает за край */
+  .grid{display:grid;gap:14px;grid-template-columns:repeat(auto-fit,minmax(min(200px,100%),1fr));margin-bottom:14px}
+  /* ряды показателей: четыре карточки в строку держатся дольше, чем списки долга */
+  .grid.m{grid-template-columns:repeat(auto-fit,minmax(min(168px,100%),1fr))}
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);padding:16px 18px;min-width:0}
+  .k{font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:var(--dim);margin-bottom:8px}
+  /* длинное значение («1 ч 05 мин … 2 ч 10 мин», «Спецификация») переносится, а не режется */
+  .v{font-size:30px;font-weight:650;letter-spacing:-.03em;line-height:1.1;font-variant-numeric:tabular-nums;
+    overflow-wrap:anywhere}
+  .v.stage{font-size:clamp(17px,4.4vw,22px)}
+  .v small{font-size:14px;font-weight:500;color:var(--dim);letter-spacing:0}
+  .sub{font-size:12.5px;color:var(--dim);margin-top:6px;overflow-wrap:anywhere}
+  .hero{display:flex;gap:18px;align-items:center;flex-wrap:wrap}
+  .hero>div{min-width:0}
+  .ring{flex:0 0 84px}
+  .bar{height:6px;background:var(--ghost);border-radius:99px;overflow:hidden;margin-top:10px}
+  .bar i{display:block;height:100%;background:var(--accent);border-radius:99px;transition:width .3s ease}
+  .bar.lg{height:10px;margin-top:12px}
+  /* общий прогресс: этапы по весам, внутри разработки — доля готовых тасков */
+  .overall{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);
+    padding:16px 18px;margin-bottom:14px}
+  .overall-head{display:flex;justify-content:space-between;align-items:baseline;gap:10px;
+    font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:var(--dim)}
+  .overall-head b{font-size:24px;font-weight:650;letter-spacing:-.02em;text-transform:none;
+    color:var(--ink);font-variant-numeric:tabular-nums}
+  .overall-head b small{font-size:14px;font-weight:500;color:var(--dim)}
+  h2{font-size:12px;letter-spacing:.07em;text-transform:uppercase;color:var(--dim);
+    margin:26px 0 12px;font-weight:600}
+  .tl{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);padding:16px 18px;min-width:0}
+  /* сводка по таскам — ответ на «где разработка» до того, как всматриваешься в полосы */
+  .tlsum{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px}
+  .chip{font-size:11.5px;letter-spacing:.03em;border:1px solid var(--line);border-radius:999px;
+    padding:3px 10px;color:var(--dim);font-variant-numeric:tabular-nums}
+  .chip.ok{border-color:var(--ok);color:var(--ok)}
+  .chip.run{border-color:var(--warn);color:var(--warn)}
+  .chip.info{border-color:var(--info);color:var(--info)}
+  .chip.bad{border-color:var(--bad);color:var(--bad)}
+  .chip.fix{border-color:var(--fix);color:var(--fix)}
+  /* фаза таска прямо на плашке: «ревью» и «ремонт» — состояния, которых до
+     этого не существовало, и по одному цвету их не различить */
+  .fill .nm{overflow:hidden;text-overflow:ellipsis;min-width:0}
+  .fill .ph{margin-left:8px;font-size:10.5px;letter-spacing:.05em;text-transform:uppercase;
+    opacity:.85;border:1px solid rgba(255,255,255,.5);border-radius:999px;padding:1px 6px;flex:none}
+  .tlnow{font-size:13px;margin:-4px 0 12px;overflow-wrap:anywhere}
+  .tlnow .lbl{color:var(--dim)}
+  .tlnow b{font-weight:650;font-variant-numeric:tabular-nums}
+  .tlnow .nowclock{color:var(--warn);font-variant-numeric:tabular-nums}
+  .wave{font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:var(--dim);margin:14px 0 8px}
+  .wave:first-child{margin-top:0}
+  /* minmax(0,1fr), а не 1fr: у 1fr пол — min-content, и длинное имя таска раздвигает сетку шире экрана */
+  .row{display:grid;grid-template-columns:26px minmax(0,1fr) 56px;gap:10px;align-items:center;margin-bottom:6px;font-size:13px}
+  .row b{font-weight:600;font-variant-numeric:tabular-nums;color:var(--dim)}
+  .row.now b{color:var(--ink)}
+  .track{background:var(--ghost);border-radius:6px;height:22px;position:relative;overflow:hidden;min-width:0}
+  .fill{position:absolute;inset:0 auto 0 0;border-radius:6px;display:flex;align-items:center;
+    padding:0 8px;white-space:nowrap;font-size:12px;color:#fff;overflow:hidden}
+  /* ждущий таск — пустой контур, а не залитая дорожка: плашка теперь во всю
+     ширину, и без этого «ждёт» выглядело бы как ещё одно состояние заливки */
+  .row.wait .track{background:transparent;border:1px dashed var(--line)}
+  .fill.pend{background:transparent;border:0;color:var(--dim)}
+  /* «в работе» должно читаться как живое, а не как исчезающее: раньше плашка
+     гасла до opacity .3 вместе с названием таска. Теперь дышит свечение вокруг
+     дорожки и яркость плашки, текст остаётся читаемым всё время. */
+  .row.now .track{animation:trackGlow 1.9s ease-in-out infinite}
+  /* блик бежит по плашке идущего таска — движение без ложного процента */
+  .fill.active::after{content:'';position:absolute;inset:0;
+    background:linear-gradient(90deg,transparent 0,rgba(255,255,255,.30) 50%,transparent 100%);
+    transform:translateX(-100%);animation:sheen 1.9s ease-in-out infinite}
+  .mins{text-align:right;font-variant-numeric:tabular-nums;color:var(--dim);font-size:12px}
+  /* этапы — вертикальная лента с рельсом */
+  .stages{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);padding:4px 18px;min-width:0}
+  .st{display:grid;grid-template-columns:20px minmax(0,1fr) auto;gap:12px;align-items:start;
+    padding:10px 0;border-bottom:1px solid var(--line)}
+  .st:last-child{border-bottom:0}
+  .st .rail{position:relative;align-self:stretch;min-height:18px}
+  .st .rail::before{content:"";position:absolute;left:9px;top:-10px;bottom:-10px;width:1px;background:var(--line)}
+  .st:first-child .rail::before{top:9px}
+  .st:last-child .rail::before{bottom:calc(100% - 9px)}
+  .st .rail i{position:absolute;left:4px;top:3px;width:11px;height:11px;border-radius:99px;
+    box-sizing:border-box;border:2px solid var(--line);background:var(--panel)}
+  .st.done .rail i{background:var(--ok);border-color:var(--ok)}
+  .st.active .rail i{background:var(--warn);border-color:var(--warn);animation:pulse 1.6s ease-in-out infinite}
+  .st.failed .rail i{background:var(--bad);border-color:var(--bad)}
+  .st.skipped .rail i{border-style:dashed;background:var(--panel)}
+  .st>div{min-width:0}
+  .st .nm{font-size:13.5px;overflow-wrap:anywhere}
+  .st.active .nm{font-weight:650}
+  .st.done .nm,.st.skipped .nm{color:var(--dim)}
+  .st .mins{padding-top:1px}
+  @keyframes trackGlow{
+    0%,100%{box-shadow:0 0 0 0 var(--glow)}
+    50%{box-shadow:0 0 0 4px transparent}
+  }
+  @keyframes sheen{to{transform:translateX(100%)}}
+  /* у кого выключена анимация в системе — просто статичная подсветка */
+  @media (prefers-reduced-motion:reduce){
+    .row.now .track{animation:none;box-shadow:0 0 0 3px var(--glow)}
+    .fill.active::after{animation:none;background:none}
+  }
+  .note{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);
+    padding:14px 18px;font-size:13px;color:var(--dim)}
+  .note b{color:var(--ink);font-weight:600}
+  .stale{color:var(--warn)}
+  /* Часы, остановленные простоем: цифры гаснут, чтобы стоящий таймер не читался как поломка. */
+  .paused{opacity:.5}
+  table{width:100%;border-collapse:collapse;font-size:13px;background:var(--panel);
+    border:1px solid var(--line);border-radius:var(--radius);overflow:hidden}
+  th{text-align:left;font-size:11px;letter-spacing:.05em;text-transform:uppercase;color:var(--dim);
+    font-weight:600;padding:10px 12px;border-bottom:1px solid var(--line)}
+  td{padding:10px 12px;border-bottom:1px solid var(--line);vertical-align:top}
+  tr:last-child td{border-bottom:0}
+  .dot{display:inline-block;width:7px;height:7px;border-radius:99px;margin-right:7px;vertical-align:1px}
+  .tag{display:inline-block;font-size:11px;border:1px solid var(--line);border-radius:5px;
+    padding:1px 5px;margin:0 3px 3px 0;color:var(--dim);font-variant-numeric:tabular-nums}
+  .tag.ok{border-color:var(--ok);color:var(--ok)}
+  .tag.part{border-color:var(--ok);border-style:dashed}
+  ul.debt{margin:0;padding-left:18px}
+  ul.debt li{margin-bottom:4px;font-size:13px}
+  .empty{color:var(--dim);font-size:13px}
+  footer{margin-top:24px;font-size:12px;color:var(--dim);display:flex;gap:14px;flex-wrap:wrap}
+  footer code{overflow-wrap:anywhere}
+  .scroll{overflow-x:auto}
+  /* таблица тасков скроллится внутри своей рамки, а не сминает семь колонок в кашу */
+  .scroll table{min-width:560px}
+  /* узкая раскладка: встроенная панель IDE, боковая колонка, телефон */
+  @media (max-width:460px){
+    body{padding:20px 12px 44px}
+    .top{gap:10px}
+    header{gap:8px;margin-bottom:16px}
+    h1{font-size:15px}
+    h2{margin:20px 0 10px}
+    .card,.overall,.tl,.note{padding:13px 14px}
+    .stages{padding:2px 14px}
+    .v{font-size:25px}
+    .overall-head b{font-size:21px}
+    .ring{flex:0 0 68px;width:68px;height:68px}
+    .hero{gap:12px}
+    .row{grid-template-columns:24px 1fr 48px;gap:8px}
+    .st{grid-template-columns:18px 1fr auto;gap:9px}
+    .badges{margin-left:0}
+    .segs{margin-left:0}
+    /* семь колонок в узкую панель не влезают ни при каком min-width, поэтому здесь
+       таблица перестаёт требовать ширину, а второстепенные колонки уходят:
+       требования, повторы и коммит есть в файлах, а «что и сколько идёт» — нет */
+    .scroll table{min-width:0}
+    th:nth-child(3),td:nth-child(3),
+    th:nth-child(5),td:nth-child(5),
+    th:nth-child(7),td:nth-child(7){display:none}
+    /* переносится только название таска: заголовки и числа рвать по буквам нельзя */
+    th,td{padding:9px 8px;white-space:nowrap}
+    td:nth-child(2){white-space:normal;overflow-wrap:anywhere}
   }
 </style>
 </head>
 <body>
 <!-- Плашка о потере связи живёт вне #app: render() переписывает #app целиком. -->
-<div class="lost" hidden><div id="link" role="status" hidden></div></div>
+<div class="wrap"><div class="note" id="link" role="status" hidden></div></div>
 <div class="wrap" id="app"></div>
 
 <!-- Состояние приходит двумя путями, и порядок этих двух тегов — весь смысл.
@@ -341,39 +263,22 @@
      правке, снимок — на каждом вызове .autopilot/ap.py, и он же вписывает
      файл в страницу, так что снимок либо равен файлу, либо старше его.
      Между маркерами правит только ap.py; руками — никогда. -->
-<script>/*STATE-BEGIN*/window.STATE={"version": 2, "slug": "protection-and-logs", "dir": "2026-10-22-protection-and-logs", "title": "KROTTUN: защита IP и журнал соединений", "mode": "semi", "depth": "normal", "tier": "T0", "briefFile": "2026-10-22-brief.md", "memoryFile": "AGENTS.md", "memoryOwner": "autopilot", "skillDir": "C:/Users/010726Admin/.codex/tmp/nick-vels-skills-v2.2.0/skills/autopilot", "baseCommit": "72fe21e", "startedAt": "2026-10-22T19:48:12+07:00", "updatedAt": "2026-10-22T20:19:24+07:00", "finishedAt": "2026-10-22T20:19:24+07:00", "stages": [{"id": "preflight", "status": "done", "startedAt": "2026-10-22T19:48:12+07:00", "finishedAt": "2026-10-22T19:48:34+07:00"}, {"id": "manifest", "status": "done", "startedAt": "2026-10-22T19:48:34+07:00", "finishedAt": "2026-10-22T19:48:36+07:00"}, {"id": "briefing", "status": "done", "startedAt": "2026-10-22T19:48:36+07:00", "finishedAt": "2026-10-22T19:51:13+07:00"}, {"id": "spec", "status": "done", "startedAt": "2026-10-22T19:51:13+07:00", "finishedAt": "2026-10-22T19:52:13+07:00"}, {"id": "plan", "status": "done", "startedAt": "2026-10-22T19:52:13+07:00", "finishedAt": "2026-10-22T19:52:31+07:00"}, {"id": "build", "status": "done", "startedAt": "2026-10-22T19:52:31+07:00", "finishedAt": "2026-10-22T20:07:43+07:00"}, {"id": "review", "status": "done", "startedAt": "2026-10-22T20:07:43+07:00", "finishedAt": "2026-10-22T20:15:55+07:00"}, {"id": "final", "status": "done", "startedAt": "2026-10-22T20:15:55+07:00", "finishedAt": "2026-10-22T20:19:24+07:00"}], "requirements": {"total": 7, "done": 7, "inTicket": 0, "inSpec": 0, "placeholder": 0, "deferred": 0, "dropped": 0}, "tickets": [{"id": "01", "title": "Защита IP, резервирование и журнал соединений", "requirements": ["R01", "R02", "R03", "R04", "R05", "R06", "R07"], "blockedBy": [], "wave": 1, "zone": ["core/", "gui/", "tests/", "README.md"], "review": "нет", "model": "сильная", "status": "done", "startedAt": "2026-10-22T19:52:33+07:00", "finishedAt": "2026-10-22T20:07:40+07:00", "retries": 0, "repairs": 0, "tests": {"passed": 25, "failed": 0}, "commit": "8ea3207"}, {"id": "F1", "title": "Исправление завершения ядра и отмены подключения", "requirements": ["R02", "R03"], "blockedBy": [], "wave": 2, "zone": ["core/", "gui/", "tests/"], "review": "да — ремонт ветки", "model": "сильная", "status": "done", "startedAt": "2026-10-22T20:09:47+07:00", "finishedAt": "2026-10-22T20:14:10+07:00", "retries": 0, "repairs": 0, "tests": {"passed": 27, "failed": 0}, "commit": "aae6b03"}, {"id": "F2", "title": "Ошибка остановки не блокирует интерфейс", "requirements": ["R02", "R03"], "blockedBy": [], "wave": 3, "zone": ["gui/", "tests/"], "review": "нет", "model": "сильная", "status": "done", "retries": 0, "repairs": 0, "startedAt": "2026-10-22T20:14:13+07:00", "finishedAt": "2026-10-22T20:15:53+07:00", "tests": {"passed": 28, "failed": 0}, "commit": "4ef6a51"}], "tests": {"passed": 28, "failed": 0}, "debt": {"placeholders": [], "assumptions": [], "emptyEnv": []}, "additions": [], "coverage": {"found": 0, "fixed": 0, "deferred": 0, "items": []}, "concerns": [], "blind": {"checked": 7, "matched": 4, "mismatches": ["R03: отсутствие реальных утечек не подтверждено без Windows VM/packet capture", "R05: журнал snapshots активных соединений может пропустить короткие; browser/live ядро не проверены", "R06: ограничены собственные проверки, антифрод и пользовательский спам не контролируются"]}, "beats": ["2026-10-22T19:48:12+07:00", "2026-10-22T19:48:34+07:00", "2026-10-22T19:48:36+07:00", "2026-10-22T19:48:45+07:00", "2026-10-22T19:51:11+07:00", "2026-10-22T19:51:13+07:00", "2026-10-22T19:52:11+07:00", "2026-10-22T19:52:13+07:00", "2026-10-22T19:52:16+07:00", "2026-10-22T19:52:18+07:00", "2026-10-22T19:52:28+07:00", "2026-10-22T19:52:29+07:00", "2026-10-22T19:52:31+07:00", "2026-10-22T19:52:33+07:00", "2026-10-22T20:07:40+07:00", "2026-10-22T20:07:41+07:00", "2026-10-22T20:07:43+07:00", "2026-10-22T20:09:44+07:00", "2026-10-22T20:09:45+07:00", "2026-10-22T20:09:47+07:00", "2026-10-22T20:13:07+07:00", "2026-10-22T20:13:08+07:00", "2026-10-22T20:14:10+07:00", "2026-10-22T20:14:11+07:00", "2026-10-22T20:14:13+07:00", "2026-10-22T20:15:53+07:00", "2026-10-22T20:15:55+07:00", "2026-10-22T20:18:20+07:00", "2026-10-22T20:18:22+07:00", "2026-10-22T20:19:23+07:00", "2026-10-22T20:19:24+07:00"], "rev": 32, "waiting": null, "waits": [{"kind": "briefing", "from": "2026-10-22T19:48:45+07:00", "to": "2026-10-22T19:51:13+07:00"}], "log": [{"t": "2026-10-22T19:48:12+07:00", "k": "init"}, {"t": "2026-10-22T19:48:34+07:00", "k": "stage", "id": "manifest", "act": "start"}, {"t": "2026-10-22T19:48:36+07:00", "k": "stage", "id": "briefing", "act": "start"}, {"t": "2026-10-22T19:48:45+07:00", "k": "ask", "kind": "briefing", "note": "Уточнить: блокировать весь ПК или сохранять исключения; резервирование после блокировки"}, {"t": "2026-10-22T19:51:13+07:00", "k": "answered", "kind": "briefing"}, {"t": "2026-10-22T19:51:13+07:00", "k": "gate", "g": "G1", "ok": false, "open": 7, "total": 7}, {"t": "2026-10-22T19:51:13+07:00", "k": "stage", "id": "spec", "act": "start"}, {"t": "2026-10-22T19:52:11+07:00", "k": "gate", "g": "G2", "ok": true, "found": 0, "fixed": 0, "deferred": 0}, {"t": "2026-10-22T19:52:13+07:00", "k": "stage", "id": "plan", "act": "start"}, {"t": "2026-10-22T19:52:16+07:00", "k": "tickets", "n": 1}, {"t": "2026-10-22T19:52:18+07:00", "k": "gate", "g": "G3", "ok": true, "problems": 0}, {"t": "2026-10-22T19:52:28+07:00", "k": "tier", "v": "T0"}, {"t": "2026-10-22T19:52:31+07:00", "k": "stage", "id": "build", "act": "start"}, {"t": "2026-10-22T19:52:33+07:00", "k": "ticket", "ids": ["01"], "act": "start"}, {"t": "2026-10-22T20:07:40+07:00", "k": "ticket", "ids": ["01"], "act": "done", "tests": {"passed": 25, "failed": 0}}, {"t": "2026-10-22T20:07:41+07:00", "k": "add", "key": "report", "n": 1}, {"t": "2026-10-22T20:07:43+07:00", "k": "stage", "id": "review", "act": "start"}, {"t": "2026-10-22T20:09:44+07:00", "k": "tickets", "n": 2}, {"t": "2026-10-22T20:09:45+07:00", "k": "gate", "g": "G3", "ok": true, "problems": 0}, {"t": "2026-10-22T20:09:47+07:00", "k": "ticket", "ids": ["F1"], "act": "start"}, {"t": "2026-10-22T20:13:07+07:00", "k": "ticket", "ids": ["F1"], "act": "done", "tests": {"passed": 27, "failed": 0}}, {"t": "2026-10-22T20:13:08+07:00", "k": "ticket", "ids": ["F1"], "act": "review"}, {"t": "2026-10-22T20:14:10+07:00", "k": "ticket", "ids": ["F1"], "act": "done"}, {"t": "2026-10-22T20:14:11+07:00", "k": "tickets", "n": 3}, {"t": "2026-10-22T20:14:13+07:00", "k": "ticket", "ids": ["F2"], "act": "start"}, {"t": "2026-10-22T20:15:53+07:00", "k": "ticket", "ids": ["F2"], "act": "done", "tests": {"passed": 28, "failed": 0}}, {"t": "2026-10-22T20:15:55+07:00", "k": "stage", "id": "final", "act": "start"}, {"t": "2026-10-22T20:18:20+07:00", "k": "gate", "g": "G4", "ok": false, "checked": 7, "matched": 4}, {"t": "2026-10-22T20:18:22+07:00", "k": "add", "key": "report", "n": 2}, {"t": "2026-10-22T20:19:23+07:00", "k": "tests", "passed": 28, "failed": 0}, {"t": "2026-10-22T20:19:24+07:00", "k": "finish", "result": "Код защиты, резервирования и журнала реализован; offline 28 tests OK. Сетевая приёмка Windows VM не пройдена, выпуск не подтверждён."}], "reqList": [{"id": "R01", "text": "«Посмотри последний релиз v2.4.0, изучи его»", "status": "done"}, {"id": "R02", "text": "«программа либо переключалась на другую прокси, либо отключала интернет вообще»", "status": "done"}, {"id": "R03", "text": "«чтобы мой реальный IP никуда не просочился»", "status": "done"}, {"id": "R04", "text": "«видеть в отдельном окошке, допустим, в отдельной вкладке там в той же программе»", "status": "done"}, {"id": "R05", "text": "«видел бы какие запросы отправляются с моего IP, ну с моей прокси вот сейчас»", "status": "done"}, {"id": "R06", "text": "«чтобы они не спамили»", "status": "done"}, {"id": "R07", "text": "«делать будем через скилл»", "status": "done"}], "gates": {"G1": {"ok": false, "at": "2026-10-22T19:51:13+07:00", "open": 7, "total": 7}, "G2": {"ok": true, "at": "2026-10-22T19:52:11+07:00", "found": 0, "fixed": 0, "deferred": 0}, "G3": {"ok": true, "at": "2026-10-22T20:09:45+07:00", "problems": 0}, "G4": {"ok": false, "at": "2026-10-22T20:18:20+07:00", "checked": 7, "matched": 4}}, "result": "Код защиты, резервирования и журнала реализован; offline 28 tests OK. Сетевая приёмка Windows VM не пройдена, выпуск не подтверждён.", "report": ["Защита требует изолированной Windows VM: packet capture, native WFP ABI, существующие соединения, boot/BFE, смена интерфейса, live журнал. Выпуск не подтверждён.", "Чистый клон: 28 tests OK; fake failover и journal PASS. Полный запуск и browser-прогон не выполнялись; зависимости уже установлены.", "Журнал показывает snapshots активных соединений; короткие могут пропускаться. HTTPS-содержимое недоступно. Антифрод-блокировки сайтов не предотвращаются."]};/*STATE-END*/</script>
+<script>/*STATE-BEGIN*/window.STATE={"version": 2, "slug": "diagnostics-proxy-controls", "dir": "2026-10-24-diagnostics-proxy-controls--wip", "title": "KROTTUN: диагностика, редактирование и резервы", "mode": "semi", "depth": "normal", "tier": "T2", "briefFile": "2026-10-24-brief.md", "memoryFile": "AGENTS.md", "memoryOwner": "autopilot", "skillDir": "C:/Users/010726Admin/.agents/skills/autopilot", "baseCommit": null, "startedAt": "2026-10-24T21:02:17+07:00", "updatedAt": "2026-10-24T21:11:30+07:00", "finishedAt": null, "stages": [{"id": "preflight", "status": "done", "startedAt": "2026-10-24T21:02:17+07:00", "finishedAt": "2026-10-24T21:02:30+07:00"}, {"id": "manifest", "status": "done", "startedAt": "2026-10-24T21:02:30+07:00", "finishedAt": "2026-10-24T21:03:58+07:00"}, {"id": "briefing", "status": "skipped", "startedAt": "2026-10-24T21:03:57+07:00", "finishedAt": "2026-10-24T21:03:57+07:00", "note": "Функции выбраны из согласованного описания; внешних решений не требуется"}, {"id": "spec", "status": "done", "startedAt": "2026-10-24T21:03:58+07:00", "finishedAt": "2026-10-24T21:10:44+07:00"}, {"id": "plan", "status": "active", "startedAt": "2026-10-24T21:10:44+07:00"}, {"id": "build", "status": "pending"}, {"id": "review", "status": "pending"}, {"id": "final", "status": "pending"}], "requirements": {"total": 4, "done": 0, "inTicket": 4, "inSpec": 0, "placeholder": 0, "deferred": 0, "dropped": 0}, "tickets": [{"id": "01", "title": "Редактирование существующего прокси", "requirements": ["R02", "R04"], "blockedBy": [], "wave": 1, "zone": ["gui/app_webview.py", "gui/web/index.html", "tests/test_proxy_edit.py"], "review": "да — фундамент и credentials/целостность хранилища", "model": "сильная", "status": "pending", "retries": 0, "repairs": 0}, {"id": "02", "title": "Явная очередь резервов", "requirements": ["R03", "R04"], "blockedBy": ["01"], "wave": 2, "zone": ["gui/app_webview.py", "gui/web/index.html", "tests/test_fallback_controls.py"], "review": "да — защита и целостность настроек", "model": "сильная", "status": "pending", "retries": 0, "repairs": 0}, {"id": "03", "title": "Диагностика одной кнопкой и доставка", "requirements": ["R01", "R04"], "blockedBy": ["02"], "wave": 3, "zone": ["core/diagnostics.py", "gui/app_webview.py", "gui/web/index.html", "tests/test_diagnostics.py", "prototypes/proxy-controls", "README.md"], "review": "да — защита сети и lifecycle дочернего процесса", "model": "сильная", "status": "pending", "retries": 0, "repairs": 0}], "tests": null, "debt": {"placeholders": [], "assumptions": [], "emptyEnv": []}, "additions": [], "coverage": {"found": 4, "fixed": 4, "deferred": 0, "items": []}, "concerns": [], "blind": null, "beats": ["2026-10-24T21:02:17+07:00", "2026-10-24T21:02:30+07:00", "2026-10-24T21:03:55+07:00", "2026-10-24T21:03:57+07:00", "2026-10-24T21:03:58+07:00", "2026-10-24T21:10:43+07:00", "2026-10-24T21:10:44+07:00", "2026-10-24T21:10:46+07:00", "2026-10-24T21:10:48+07:00", "2026-10-24T21:10:50+07:00", "2026-10-24T21:11:29+07:00", "2026-10-24T21:11:30+07:00"]};/*STATE-END*/</script>
 <script src="state.js"></script>
 
 <script>
+const MODE_CLS  = {manual:'b-mode-1', interview:'b-mode-2', semi:'b-mode-3', full:'b-mode-4'};
+const DEPTH_CLS = {strict:'b-depth-1', normal:'b-depth-2', deep:'b-depth-3'};
+const TIER_CLS  = {T0:'b-tier-0', T1:'b-tier-1', T2:'b-tier-2', T3:'b-tier-3'};
+
 // Полный цикл сборки. state.js может прислать меньше — недостающие показываем как pending.
 const STAGE_IDS = ['preflight','manifest','briefing','spec','plan','build','review','final'];
+
 const POLL_MS = 10000;
-const IDLE_CAP_MS = 2700000;
 
-// Логотип — одна картинка: в тёмной теме её инвертирует CSS (--logo-filter).
-const LOGO = "data:image/png;base64,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";
-
-const IC = {
-  check: 'M20 6 9 17l-5-5',
-  clock: 'M12 6v6h4M22 12a10 10 0 1 1-20 0 10 10 0 0 1 20 0',
-  rotate: 'M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8M3 3v5h5',
-  pen: 'M12 20h9M16.38 3.62a1 1 0 0 1 3 3L7.37 18.64a2 2 0 0 1-.86.5l-2.87.84a.5.5 0 0 1-.62-.62l.84-2.87a2 2 0 0 1 .5-.86z',
-  play: 'M6 4l13 8-13 8V4z',
-  list: 'M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01',
-  shield: 'M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1zM9 12l2 2 4-4',
-  msg: 'M7.9 20A9 9 0 1 0 4 16.1L2 22Z',
-  alert: 'M22 12a10 10 0 1 1-20 0 10 10 0 0 1 20 0M12 8v4M12 16h.01',
-  x: 'M18 6 6 18M6 6l12 12',
-  flag: 'M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1zM4 22v-7',
-  chev: 'm9 18 6-6-6-6',
-  up: 'm18 15-6-6-6 6',
-  plus: 'M12 5v14M5 12h14',
-  hourglass: 'M5 22h14M5 2h14M17 22v-4.17a2 2 0 0 0-.59-1.42L12 12l-4.41 4.41A2 2 0 0 0 7 17.83V22M7 2v4.17a2 2 0 0 0 .59 1.42L12 12l4.41-4.41A2 2 0 0 0 17 6.17V2',
-  sun: 'M12 8a4 4 0 1 0 0 8 4 4 0 0 0 0-8M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41',
-  moon: 'M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z',
-  sync: 'M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8M21 3v5h-5M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16M8 16H3v5'
-};
-const ic = (n, cls) => `<svg class="ic${cls ? ' ' + cls : ''}" viewBox="0 0 24 24" aria-hidden="true"><path d="${IC[n]}"/></svg>`;
+const SUN  = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="4.2"/><path d="M12 2v2M12 20v2M4.2 4.2l1.4 1.4M18.4 18.4l1.4 1.4M2 12h2M20 12h2M4.2 19.8l1.4-1.4M18.4 5.6l1.4-1.4"/></svg>';
+const MOON = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 14.5A8.5 8.5 0 0 1 9.5 4a8.5 8.5 0 1 0 10.5 10.5z"/></svg>';
+const SYNC = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-2.64-6.36"/><path d="M21 3v6h-6"/></svg>';
 
 const systemDark = () => {
   try { return matchMedia('(prefers-color-scheme: dark)').matches; } catch(e) { return false; }
@@ -390,216 +295,100 @@ function applyTheme(t){
   else document.documentElement.removeAttribute('data-theme');
 }
 
+const LOGO_LIGHT = "data:image/png;base64,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";
+const LOGO_DARK  = "data:image/png;base64,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";
+
 const plural = (n, one, few, many) => {
   const a = Math.abs(n) % 10, b = Math.abs(n) % 100;
   if (a === 1 && b !== 11) return one;
   if (a >= 2 && a <= 4 && (b < 12 || b > 14)) return few;
   return many;
 };
-const en = (n, one, many) => n === 1 ? one : many;
-const q = (s, lang) => lang === 'en' ? `“${s}”` : `«${s}»`;
 
 const I18N = {
-  ru:{lang:"ru",of:"из",
+  ru:{lang:"ru",coverage:"Покрытие брифа",ofReq:(a,b)=>`${a} из ${b} требований`,
+    overall:"Прогресс проекта",overallStages:(a,b)=>`${a} из ${b} этапов пройдено`,
+    overallTickets:(a,b)=>`${a} из ${b} тасков`,
+    tickets:"Таски",ticketsDone:p=>`${p}% готово`,retries:n=>` · ${n} повтор.`,
+    elapsed:"В работе",median:m=>`медиана на таск — ${m} мин`,tooEarly:"рано считать",
+    calendar:c=>`календарных ${c}`,paused:"пауза — часы стоят",
+    left:"Осталось (оценка)",needTwo:"нужно 2+ готовых таска",
+    critpath:n=>`критический путь: ${n} ${plural(n,'таск','таска','тасков')} в цепочке`,
+    stagesTitle:"Этапы",stage:"Этап сейчас",stageOf:(a,b)=>`${a} из ${b} этапов`,
     stages:{preflight:"Подготовка",manifest:"Требования",briefing:"Брифинг",spec:"Спецификация",
       plan:"План",build:"Разработка",review:"Код-ревью",final:"Приёмка"},
-    modes:{full:"Полный автомат",semi:"Полуавтомат",interview:"Интервью",manual:"Ручной режим"},
-    depths:{strict:"Строго по брифу",normal:"Обычная глубина",deep:"Максимальная глубина"},
-    started:t=>`начата ${t}`,startedRange:(a,b)=>`${a} — ${b}`,today:"сегодня в",
-    refresh:"Обновить сейчас",langLabel:"Язык",themeLabel:"Тема",themeLight:"Светлая тема",themeDark:"Тёмная тема",
-    lost:"Связь с дашбордом пропала — на экране последнее, что он успел получить. Так бывает, когда компьютер засыпает. Скажи агенту «подними дашборд»: страница подхватит его сама, перезагружать не нужно.",
-    stateRun:{preflight:"Идёт подготовка",manifest:"Разбор требований",briefing:"Идёт брифинг",spec:"Пишется спецификация",
-      plan:"Составляется план",build:"Идёт разработка",review:"Идёт код-ревью",final:"Идёт приёмка"},
-    h2Run:{preflight:"Готовлю репозиторий и дашборд",manifest:"Разбираю бриф на требования — слово в слово",
-      briefing:"Ищу в брифе то, что нельзя построить как написано",spec:"Пишу спецификацию по твоим словам",
-      plan:"Режу спецификацию на таски",review:"Проверяю всю сборку целиком",final:"Проверяю результат вслепую — по брифу, без спецификации"},
-    leadRun:{preflight:"Дальше бриф разрежется на требования, и ни одно не потеряется до конца сборки.",
-      manifest:"Каждое требование хранит твои точные слова — по ним сборку проверят в конце.",
-      briefing:"Если найдётся развилка, которую решать тебе, вопрос придёт в чат.",
-      spec:"Потом независимый читатель сверит спецификацию с брифом — без моих пересказов.",
-      plan:"Каждое требование попадёт в таск, и каждый таск — от требования.",
-      review:"Одно ревью всей ветки с проверкой безопасности. Всё, что стоит поправить, исправит один таск.",
-      final:"Проверяющий получает только твой бриф и чистую копию репозитория."},
-    buildH2:(d,n,r)=>d ? `Сдано ${d} ${plural(d,'таск','таска','тасков')} из ${n}${r ? `, ещё ${r} в работе` : ''}`
-      : `${n} ${plural(n,'таск','таска','тасков')} в плане${r ? `, ${r} уже в работе` : ''}`,
-    buildAllDone:n=>`Все ${n} ${plural(n,'таск','таска','тасков')} сданы`,
-    leadWriting:l=>`Пишется ${l}.`,leadReview:l=>`На проверке: ${l}.`,leadRepair:l=>`В ремонте после ревью: ${l}.`,
-    leadFailed:l=>`Не собрался: ${l}.`,leadIdle:"Следующая волна вот-вот уйдёт.",
-    waitState:"Сборка ждёт тебя",
-    waitH2:{briefing:"Ответь в чате на вопросы по брифу",spec:"Посмотри спецификацию и скажи «ок»",
-      plan:"Посмотри план и скажи «ок»",action:"Нужно твоё решение перед необратимым шагом",stop:"Сборка остановлена — нужен ты"},
-    waitHint:"Ответ — в чате. Дальше сборка пойдёт сама",waitBig:"ждём ответа · часы сборки стоят",
-    failState:"Сборка остановилась",failH2:n=>`Этап «${n}» не прошёл`,
-    doneState:"Сдано",doneDefault:"Сборка сдана",
-    doneNeed:(k,p)=>`Для настоящего запуска ${[k ? `впиши <b>${k} ${plural(k,'ключ','ключа','ключей')}</b> в .env` : '', p ? `замени <b>${p} ${plural(p,'заглушку','заглушки','заглушек')}</b> своими данными` : ''].filter(Boolean).join(' и ')}.`,
-    doneNothing:"От тебя ничего не нужно — можно пользоваться.",
-    doneBig:t=>`в работе · сдано в ${t}`,
-    etaLbl:"осталось — с ревью и приёмкой",etaLate:"осталось — до сдачи",stageClock:n=>`на этапе «${n}»`,
-    paused:"пауза — часы стоят",min:"мин",hr:"ч",
-    ahead:"впереди",skipped:"пропущен",failedSt:"не прошёл",waitingSt:"ждём ответа",
-    tReqs:"Требования",tTickets:"Таски",tTests:"Тесты",tTime:"В работе",tBlind:"Слепая приёмка",
-    reqParts:{done:"сделано",work:n=>`${n} в работе`,open:n=>`${n} ${plural(n,'разбирается','разбираются','разбираются')}`,ph:n=>`${n} ${plural(n,'ждёт','ждут','ждут')} твоих данных`,
-      def:n=>`${n} отложено`,drop:n=>`${n} снято тобой`},
-    reqLater:"появятся после разбора брифа",
-    tkParts:{now:n=>`пишется ${n}`,rev:n=>`проверка ${n}`,fix:n=>`ремонт ${n}`,bad:n=>`упало ${n}`,
-      all:"все сданы",retry:n=>`${n} ${plural(n,'повтор','повтора','повторов')}`,repair:n=>`${n} ${plural(n,'ремонт','ремонта','ремонтов')}`},
-    tkLater:"появятся после плана",noSplit:"без разбивки",
-    testsOk:"0 упало",testsBad:n=>`${n} упало`,testsSub:"после последнего сданного таска",testsFinal:"финальный прогон",testsLater:"появятся с первым таском",
-    timeSub:"без простоев и ожидания ответа",median:m=>`таск в среднем ${m} мин`,
-    blindSub:(m,f)=>m ? `${m} ${plural(m,'расхождение','расхождения','расхождений')}` : "расхождений нет",
-    build:"Ход сборки",
-    kinds:{done:"готово",now:"пишется",rev:"проверка",fix:"ремонт",bad:"упало",wait:"ждёт"},
-    chip:{done:"сдан",now:"пишется",rev:"проверка",fix:"ремонт",bad:"не собрался",wait:"ждёт"},
-    wave:n=>`Волна ${n}`,waveSub:c=>`— ${c} ${plural(c,'таск','таска','тасков')} параллельно`,
-    waveWaits:l=>`— ждёт ${l.length > 1 ? 'таски' : 'таск'} ${l.join(', ')}`,
-    noteReview:r=>`Проверяется отдельно: ${r}`,noteRepair:r=>`Ревью вернуло: ${r}`,
-    noTickets:"Таски появятся после спецификации и плана. Разработка пойдёт сама.",
-    t0:"Ярус T0 — собирается за один заход, без разбивки на таски.",
-    words:"Твои слова",wordsSub:n=>`${n} ${plural(n,'требование','требования','требований')} из брифа`,
-    rs:{done:"сделано",work:"в работе",open:"разбирается",placeholder:"нужны твои данные",deferred:"отложено",dropped:"снято тобой"},
-    fAll:"Все",fDone:"Сделано",fWork:"В работе",fOpen:"Разбирается",fPh:"Нужны твои данные",fDef:"Отложено",fDrop:"Снято",
-    showAll:n=>`Показать все ${n}`,collapse:"Свернуть",more:n=>`Ещё ${n}`,
-    gates:"Проверки",gatesOf:n=>`${n} из 4`,
-    gT:{G1:"Бриф разобран до конца",G2:"Спецификация ничего не потеряла",G3:"Каждое требование — в таске",G4:"Слепая приёмка"},
-    g1ok:n=>`0 открытых вопросов из ${n}`,g1bad:n=>`${n} ${plural(n,'вопрос','вопроса','вопросов')} ещё ${plural(n,'открыт','открыты','открыто')}`,
-    g1ask:"Ждёт твоих ответов в чате",g1later:"Впереди: после брифинга",
-    g2:(f,x,d)=>f ? `Независимый читатель нашёл ${f} ${plural(f,'пропуск','пропуска','пропусков')}: ${x} ${plural(x,'дописан','дописано','дописано')}, ${d} отложено` : "Независимый читатель пропусков не нашёл",
-    g2later:"Впереди: независимый читатель сверит её с брифом",
-    g3ok:(r,t)=>`${r} ${plural(r,'требование','требования','требований')} разложено на ${t} ${plural(t,'таск','таска','тасков')}`,
-    g3bad:n=>`${n} ${plural(n,'проблема','проблемы','проблем')} в плане — план переделывается`,g3later:"Впереди, на этапе плана",
-    g4:(m,c,x)=>`${m} из ${c} подтверждено${x ? ` · ${x} ${plural(x,'расхождение','расхождения','расхождений')}` : ''}`,
-    g4later:"В конце: чистая копия, проверка по брифу без спецификации",gNone:"Не отмечено в этой сборке",
-    feed:"Лента",
-    need:"Понадобится от тебя",prep:"Перед запуском — от тебя",
-    envKeys:"Ключи в .env",placeholders:"Заглушки — нужны твои данные",assumptions:"Решения, принятые за тебя",
-    needEmpty:"Пока ничего. Ключи, заглушки и решения за тебя появятся здесь по ходу сборки.",
-    blind:"Слепая приёмка",blindNote:"Проверяющий видел только твой бриф и готовый код — без спецификации.",
-    blindBad:"Вот где он не согласился:",blindOk:"Расхождений с брифом нет.",
-    report:"Открытые вопросы",concerns:"Замечания ревью",concernsNote:"Не мешают работе — оставлены с адресом в коде.",
-    additions:"Добавлено сверх заказанного",
-    updated:"Обновлено",filesIn:"Требования и таски — в",frozen:"Сборка сдана — дашборд больше не обновляется",
-    ago:{s:s=>`${s} сек назад`,m:m=>`${m} мин назад`,h:(h,m)=>`${h} ч ${m} мин назад`},
-    agoShort:{s:"сейчас",m:m=>`${m} мин`,h:h=>`${h} ч`},
-    ev:{init:"Сборка начата",
-      stage:{start:n=>`Начат этап «${n}»`,done:n=>`Пройден этап «${n}»`,skip:(n,x)=>`Этап «${n}» пропущен${x ? ': ' + x : ''}`,fail:(n,x)=>`Этап «${n}» не прошёл${x ? ': ' + x : ''}`},
-      tickets:n=>`План: ${n} ${plural(n,'таск','таска','тасков')}`,
-      ticket:{start:ids=>ids.length > 1 ? `Ушла волна: ${ids.join(', ')}` : `Таск ${ids[0]} начат`,
-        review:ids=>`${ids.length > 1 ? 'Таски' : 'Таск'} ${ids.join(', ')} на проверке`,
-        repair:(ids,x)=>`Таск ${ids.join(', ')} вернулся в ремонт${x ? ': ' + x : ''}`,
-        done:(ids,t)=>`Таск ${ids.join(', ')} сдан${t ? ` · ${t.passed} ${plural(t.passed,'тест','теста','тестов')}${t.failed ? `, ${t.failed} упало` : ''}` : ''}`,
-        fail:(ids,x)=>`Таск ${ids.join(', ')} не собрался${x ? ': ' + x : ''}`,
-        retry:ids=>`Таск ${ids.join(', ')} перезапущен`,reset:ids=>`Таск ${ids.join(', ')} сброшен`},
-      gate:{G1:(ok,e)=>ok ? "Бриф разобран до конца" : `Бриф: открытых вопросов — ${e.open}`,
-        G2:(ok,e)=>`Спецификация сверена с брифом${e.found ? `: ${e.found} ${plural(e.found,'пропуск','пропуска','пропусков')}` : ' — пропусков нет'}`,
-        G3:(ok,e)=>ok ? "План покрывает все требования" : `План не сходится: ${e.problems} ${plural(e.problems,'проблема','проблемы','проблем')}`,
-        G4:(ok,e)=>`Слепая приёмка: ${e.matched} из ${e.checked}`},
-      add:{concerns:n=>`Ревью: +${n} ${plural(n,'замечание','замечания','замечаний')}`,report:n=>`В отчёт: +${n}`,
-        'debt.placeholders':n=>`Заглушка в проекте: +${n}`,'debt.assumptions':n=>`Решение за тебя: +${n}`,
-        'debt.emptyEnv':n=>`Ключ в .env: +${n}`,additions:n=>`Добавлено сверх брифа: +${n}`},
-      tests:e=>`Полный прогон: ${e.passed} ${plural(e.passed,'тест','теста','тестов')}${e.failed ? `, ${e.failed} упало` : ''}`,
-      ask:e=>`Ждём тебя${e.note ? ': ' + e.note : ''}`,answered:"Ответ получен — сборка идёт дальше",
-      finish:"Сборка сдана",reopen:"Новый бриф — сборка открыта снова"},
-    boot:"Дашборд ещё не прочитал состояние",
-    bootWhy:"Состояния нет ни внутри страницы, ни в файле <code>.autopilot/state.js</code> рядом: прогон только начался, либо файл помялся.",
-    bootHelp:"Страница проверяет файл каждые десять секунд и покажет данные, как только он появится. Если сборка идёт давно, скажи агенту «обнови состояние». Саму сборку это не затрагивает.",
-    tabWait:"● Ждём ответа"},
-  en:{lang:"en",of:"of",
+    skipped:"пропущен",notStarted:"не начат",allDone:"всё пройдено",
+    noTicketsTier:"без разбивки",notCut:"таски ещё не нарезаны",
+    t0note:(n)=>`Ярус T0 — собрано за один заход, без разбивки на таски.${n?' '+n:''}`,
+    t0files:n=>`Файлов: ${n}.`,noEta:"ярус T0 — оценка не нужна",wrapUp:"таски готовы, идёт приёмка",
+    refresh:"Обновить сейчас",
+    lost:"Связь с дашбордом пропала — на экране последнее, что он успел получить. Так бывает, когда компьютер засыпает. Скажи агенту «подними дашборд»: страница подхватит сама, перезагружать не нужно. Сборку это не трогает.",
+    agoSec:s=>`${s} сек назад`,agoMin:m=>`${m} мин назад`,agoHr:(h,m)=>`${h} ч ${m} мин назад`,
+    debt:"Долг",debtSub:(a,b,c)=>`заглушки ${a} · допущения ${b} · переменные ${c}`,
+    tests:"Тесты",testsSub:"после последнего таска",testsSubOne:"последний полный прогон",failed:n=>`${n} упало`,
+    buildTook:d=>`разработка заняла ${d}`,
+    reqs:"Требования",reqsSub:(d,f,p)=>`снято ${d} · отложено ${f} · заглушки ${p}`,
+    progress:"Ход сборки",
+    wave:(n,c)=>c>1?`Волна ${n} — ${c} ${plural(c,'таск','таска','тасков')} параллельно`:`Волна ${n}`,
+    chipDone:n=>`готово ${n}`,chipRun:n=>`пишутся ${n}`,chipWait:n=>`ждут ${n}`,chipFailed:n=>`упало ${n}`,
+    chipReview:n=>`на ревью ${n}`,chipRepair:n=>`в ремонте ${n}`,
+    phase:{'in-progress':"пишется",review:"ревью",repair:"ремонт"},
+    nowLbl:"Сейчас:",nowIdle:"Ни один таск не запущен.",
+    noTickets:"Тасков пока нет — идёт подготовка.",
+    reqOk:"выполнено",reqPart:"частично: остались другие таски",
+    tblTickets:"Таски",thN:"#",thTitle:"Таск",thReq:"Требования",thTime:"Время",thRetry:"Повт.",
+    thTests:"Тесты",thCommit:"Коммит",tblEmpty:"пока пусто",
+    toClose:"Что осталось закрыть",placeholders:"Заглушки — нужны твои данные",
+    assumptions:"Решения, принятые за тебя",envVars:"Переменные в .env",
+    additions:"Добавлено сверх заказанного",none:"пусто",
+    blind:"Слепая приёмка",blindOk:"Расхождений нет.",blindBad:"Расхождения:",
+    blindV:(m,c)=>`${m} / ${c} требований подтверждено`,
+    updated:"Обновлено",filesIn:"Требования и таски — в",
+    modes:{full:"полный автомат",semi:"полуавтомат",interview:"интервью",manual:"ручной"},
+    depths:{strict:"строго по брифу",normal:"обычная глубина",deep:"максимальная глубина"},
+    tier:t=>`ярус ${t}`,finished:"завершено",min:"мин",hr:"ч",m:"м",
+    langLabel:"Язык",themeLabel:"Тема",themeLight:"Светлая тема",themeDark:"Тёмная тема"},
+  en:{lang:"en",coverage:"Brief coverage",ofReq:(a,b)=>`${a} of ${b} requirements`,
+    overall:"Project progress",overallStages:(a,b)=>`${a} of ${b} stages done`,
+    overallTickets:(a,b)=>`${a} of ${b} tickets`,
+    tickets:"Tickets",ticketsDone:p=>`${p}% done`,retries:n=>` · ${n} retries`,
+    elapsed:"Working time",median:m=>`median per ticket — ${m} min`,tooEarly:"too early to tell",
+    calendar:c=>`${c} on the calendar`,paused:"paused — the clock is stopped",
+    left:"Remaining (estimate)",critpath:n=>`critical path: ${n} tickets deep`,needTwo:"needs 2+ finished tickets",
+    stagesTitle:"Stages",stage:"Current stage",stageOf:(a,b)=>`${a} of ${b} stages`,
     stages:{preflight:"Preflight",manifest:"Requirements",briefing:"Briefing",spec:"Spec",
       plan:"Plan",build:"Development",review:"Code review",final:"Acceptance"},
-    modes:{full:"Fully automatic",semi:"Semi-automatic",interview:"Interview",manual:"Manual"},
-    depths:{strict:"Strictly as written",normal:"Normal depth",deep:"Maximum depth"},
-    started:t=>`started ${t}`,startedRange:(a,b)=>`${a} — ${b}`,today:"today at",
-    refresh:"Refresh now",langLabel:"Language",themeLabel:"Theme",themeLight:"Light theme",themeDark:"Dark theme",
-    lost:"The dashboard lost its connection — the screen shows the last state it received. This happens when the computer sleeps. Ask the agent to bring the dashboard back up: the page will pick it up by itself, no reload needed.",
-    stateRun:{preflight:"Preflight",manifest:"Reading the brief",briefing:"Briefing",spec:"Writing the spec",
-      plan:"Planning",build:"Development",review:"Code review",final:"Acceptance"},
-    h2Run:{preflight:"Setting up the repo and the dashboard",manifest:"Cutting the brief into requirements, word for word",
-      briefing:"Looking for what cannot be built as written",spec:"Writing the spec from your words",
-      plan:"Cutting the spec into tickets",review:"Reviewing the whole build",final:"Checking the result blind — against the brief, without the spec"},
-    leadRun:{preflight:"Next, the brief becomes requirements, and none of them gets lost before the end.",
-      manifest:"Every requirement keeps your exact words — the build is checked against them at the end.",
-      briefing:"If there is a fork that is yours to decide, the question will come to the chat.",
-      spec:"An independent reader will check the spec against the brief — without my paraphrase.",
-      plan:"Every requirement goes into a ticket, and every ticket traces to a requirement.",
-      review:"One review of the whole branch, security included. Everything worth fixing goes into one ticket.",
-      final:"The checker gets only your brief and a clean copy of the repo."},
-    buildH2:(d,n,r)=>d ? `${d} of ${n} tickets done${r ? `, ${r} more in progress` : ''}` : `${n} tickets planned${r ? `, ${r} already in progress` : ''}`,
-    buildAllDone:n=>`All ${n} tickets done`,
-    leadWriting:l=>`Writing ${l}.`,leadReview:l=>`In review: ${l}.`,leadRepair:l=>`Back from review for repair: ${l}.`,
-    leadFailed:l=>`Failed: ${l}.`,leadIdle:"The next wave is about to go.",
-    waitState:"The build is waiting for you",
-    waitH2:{briefing:"Answer the briefing questions in the chat",spec:"Look at the spec and say “ok”",
-      plan:"Look at the plan and say “ok”",action:"Your call is needed before an irreversible step",stop:"The build has stopped — you are needed"},
-    waitHint:"Answer in the chat. The build carries on by itself",waitBig:"waiting for you · the build clock is stopped",
-    failState:"The build has stopped",failH2:n=>`Stage “${n}” failed`,
-    doneState:"Done",doneDefault:"The build is done",
-    doneNeed:(k,p)=>`To run it for real, ${[k ? `put <b>${k} ${en(k,'key','keys')}</b> into .env` : '', p ? `replace <b>${p} ${en(p,'placeholder','placeholders')}</b> with your data` : ''].filter(Boolean).join(' and ')}.`,
-    doneNothing:"Nothing is needed from you — it is ready to use.",
-    doneBig:t=>`working time · done at ${t}`,
-    etaLbl:"left — with review and acceptance",etaLate:"left — until done",stageClock:n=>`in “${n}”`,
-    paused:"paused — the clock is stopped",min:"min",hr:"h",
-    ahead:"ahead",skipped:"skipped",failedSt:"failed",waitingSt:"waiting for you",
-    tReqs:"Requirements",tTickets:"Tickets",tTests:"Tests",tTime:"Working time",tBlind:"Blind acceptance",
-    reqParts:{done:"done",work:n=>`${n} in progress`,open:n=>`${n} being read`,ph:n=>`${n} need your data`,def:n=>`${n} deferred`,drop:n=>`${n} dropped by you`},
-    reqLater:"appear once the brief is read",
-    tkParts:{now:n=>`writing ${n}`,rev:n=>`review ${n}`,fix:n=>`repair ${n}`,bad:n=>`failed ${n}`,
-      all:"all done",retry:n=>`${n} ${en(n,'retry','retries')}`,repair:n=>`${n} ${en(n,'repair','repairs')}`},
-    tkLater:"appear after the plan",noSplit:"no split",
-    testsOk:"0 failed",testsBad:n=>`${n} failed`,testsSub:"after the last finished ticket",testsFinal:"final run",testsLater:"appear with the first ticket",
-    timeSub:"no idle time, no waiting for you",median:m=>`about ${m} min per ticket`,
-    blindSub:(m)=>m ? `${m} ${en(m,'disagreement','disagreements')}` : "no disagreements",
-    build:"Build progress",
-    kinds:{done:"done",now:"writing",rev:"review",fix:"repair",bad:"failed",wait:"waiting"},
-    chip:{done:"done",now:"writing",rev:"review",fix:"repair",bad:"failed",wait:"waiting"},
-    wave:n=>`Wave ${n}`,waveSub:c=>`— ${c} tickets in parallel`,waveWaits:l=>`— waits for ${l.join(', ')}`,
-    noteReview:r=>`Reviewed on its own: ${r}`,noteRepair:r=>`Review sent back: ${r}`,
-    noTickets:"Tickets appear after the spec and the plan. Development starts by itself.",
-    t0:"Tier T0 — built in a single pass, no tickets.",
-    words:"Your words",wordsSub:n=>`${n} ${en(n,'requirement','requirements')} from the brief`,
-    rs:{done:"done",work:"in progress",open:"being read",placeholder:"your data needed",deferred:"deferred",dropped:"dropped by you"},
-    fAll:"All",fDone:"Done",fWork:"In progress",fOpen:"Being read",fPh:"Your data needed",fDef:"Deferred",fDrop:"Dropped",
-    showAll:n=>`Show all ${n}`,collapse:"Collapse",more:n=>`${n} more`,
-    gates:"Checks",gatesOf:n=>`${n} of 4`,
-    gT:{G1:"The brief is fully read",G2:"The spec lost nothing",G3:"Every requirement is in a ticket",G4:"Blind acceptance"},
-    g1ok:n=>`0 open questions of ${n}`,g1bad:n=>`${n} ${en(n,'question','questions')} still open`,
-    g1ask:"Waiting for your answers in the chat",g1later:"Ahead: after the briefing",
-    g2:(f,x,d)=>f ? `An independent reader found ${f} ${en(f,'gap','gaps')}: ${x} written in, ${d} deferred` : "An independent reader found no gaps",
-    g2later:"Ahead: an independent reader checks it against the brief",
-    g3ok:(r,t)=>`${r} requirements laid out in ${t} tickets`,g3bad:n=>`${n} ${en(n,'problem','problems')} in the plan — being redone`,g3later:"Ahead, at the plan",
-    g4:(m,c,x)=>`${m} of ${c} confirmed${x ? ` · ${x} ${en(x,'disagreement','disagreements')}` : ''}`,
-    g4later:"At the end: a clean copy, checked against the brief without the spec",gNone:"Not recorded in this build",
-    feed:"Feed",
-    need:"Needed from you",prep:"Before you run it",
-    envKeys:"Keys in .env",placeholders:"Placeholders — your data needed",assumptions:"Decisions made for you",
-    needEmpty:"Nothing yet. Keys, placeholders and decisions made for you will show up here as the build goes.",
-    blind:"Blind acceptance",blindNote:"The checker saw only your brief and the finished code — no spec.",
-    blindBad:"Here is where it disagreed:",blindOk:"No disagreements with the brief.",
-    report:"Open questions",concerns:"Review notes",concernsNote:"They do not block anything — kept with their place in the code.",
-    additions:"Added beyond the brief",
-    updated:"Updated",filesIn:"Requirements and tickets in",frozen:"The build is done — the dashboard no longer updates",
-    ago:{s:s=>`${s}s ago`,m:m=>`${m} min ago`,h:(h,m)=>`${h}h ${m}m ago`},
-    agoShort:{s:"now",m:m=>`${m} min`,h:h=>`${h} h`},
-    ev:{init:"Build started",
-      stage:{start:n=>`Stage “${n}” started`,done:n=>`Stage “${n}” passed`,skip:(n,x)=>`Stage “${n}” skipped${x ? ': ' + x : ''}`,fail:(n,x)=>`Stage “${n}” failed${x ? ': ' + x : ''}`},
-      tickets:n=>`Plan: ${n} tickets`,
-      ticket:{start:ids=>ids.length > 1 ? `Wave out: ${ids.join(', ')}` : `Ticket ${ids[0]} started`,
-        review:ids=>`Ticket ${ids.join(', ')} in review`,repair:(ids,x)=>`Ticket ${ids.join(', ')} back for repair${x ? ': ' + x : ''}`,
-        done:(ids,t)=>`Ticket ${ids.join(', ')} done${t ? ` · ${t.passed} tests${t.failed ? `, ${t.failed} failed` : ''}` : ''}`,
-        fail:(ids,x)=>`Ticket ${ids.join(', ')} failed${x ? ': ' + x : ''}`,
-        retry:ids=>`Ticket ${ids.join(', ')} restarted`,reset:ids=>`Ticket ${ids.join(', ')} reset`},
-      gate:{G1:(ok,e)=>ok ? "The brief is fully read" : `Brief: ${e.open} open questions`,
-        G2:(ok,e)=>`Spec checked against the brief${e.found ? `: ${e.found} gaps` : ' — no gaps'}`,
-        G3:(ok,e)=>ok ? "The plan covers every requirement" : `The plan does not add up: ${e.problems} problems`,
-        G4:(ok,e)=>`Blind acceptance: ${e.matched} of ${e.checked}`},
-      add:{concerns:n=>`Review: +${n} notes`,report:n=>`For the report: +${n}`,'debt.placeholders':n=>`Placeholder: +${n}`,
-        'debt.assumptions':n=>`Decision made for you: +${n}`,'debt.emptyEnv':n=>`Key for .env: +${n}`,additions:n=>`Added beyond the brief: +${n}`},
-      tests:e=>`Full run: ${e.passed} tests${e.failed ? `, ${e.failed} failed` : ''}`,
-      ask:e=>`Waiting for you${e.note ? ': ' + e.note : ''}`,answered:"Answer received — the build goes on",
-      finish:"Build done",reopen:"New brief — the build is open again"},
-    boot:"Dashboard has no state yet",
-    bootWhy:"No state either inside the page or in <code>.autopilot/state.js</code> beside it: the run has just started, or the file got mangled.",
-    bootHelp:"The page rechecks the file every ten seconds and will render as soon as it appears. If the build has been running a while, ask the agent to write the state. The build itself is unaffected.",
-    tabWait:"● Waiting for you"}
+    skipped:"skipped",notStarted:"not started",allDone:"all passed",
+    noTicketsTier:"no split",notCut:"tickets not cut yet",
+    t0note:(n)=>`Tier T0 — built in a single pass, no tickets.${n?' '+n:''}`,
+    t0files:n=>`Files: ${n}.`,noEta:"tier T0 — no estimate needed",wrapUp:"tickets done, acceptance running",
+    refresh:"Refresh now",
+    lost:"The dashboard lost its connection — the screen shows the last state it received. This happens when the computer sleeps. Ask the agent to bring the dashboard back up: the page will pick it up by itself, no reload needed. The build is unaffected.",
+    agoSec:s=>`${s}s ago`,agoMin:m=>`${m} min ago`,agoHr:(h,m)=>`${h}h ${m}m ago`,
+    debt:"Debt",debtSub:(a,b,c)=>`placeholders ${a} · assumptions ${b} · env vars ${c}`,
+    tests:"Tests",testsSub:"after the last ticket",testsSubOne:"last full run",failed:n=>`${n} failed`,
+    buildTook:d=>`development took ${d}`,
+    reqs:"Requirements",reqsSub:(d,f,p)=>`dropped ${d} · deferred ${f} · placeholders ${p}`,
+    progress:"Build progress",
+    wave:(n,c)=>c>1?`Wave ${n} — ${c} tickets in parallel`:`Wave ${n}`,
+    chipDone:n=>`${n} done`,chipRun:n=>`${n} writing`,chipWait:n=>`${n} waiting`,chipFailed:n=>`${n} failed`,
+    chipReview:n=>`${n} in review`,chipRepair:n=>`${n} in repair`,
+    phase:{'in-progress':"writing",review:"review",repair:"repair"},
+    nowLbl:"Now:",nowIdle:"No ticket is running.",
+    noTickets:"No tickets yet — still preparing.",
+    reqOk:"done",reqPart:"partly: other tickets pending",
+    tblTickets:"Tickets",thN:"#",thTitle:"Ticket",thReq:"Requirements",thTime:"Time",thRetry:"Retry",
+    thTests:"Tests",thCommit:"Commit",tblEmpty:"empty so far",
+    toClose:"Still to close",placeholders:"Placeholders — your data needed",
+    assumptions:"Decisions made for you",envVars:"Variables in .env",
+    additions:"Added beyond the brief",none:"none",
+    blind:"Blind acceptance",blindOk:"No disagreements.",blindBad:"Disagreements:",
+    blindV:(m,c)=>`${m} / ${c} requirements confirmed`,
+    updated:"Updated",filesIn:"Requirements and tickets in",
+    modes:{full:"fully automatic",semi:"semi-automatic",interview:"interview",manual:"manual"},
+    depths:{strict:"strictly as written",normal:"normal depth",deep:"maximum depth"},
+    tier:t=>`tier ${t}`,finished:"finished",min:"min",hr:"h",m:"m",
+    langLabel:"Language",themeLabel:"Theme",themeLight:"Light theme",themeDark:"Dark theme"}
 };
 
 let CUR = I18N.ru;                 // язык, на котором сейчас отрисовано — нужен тикающим таймерам
@@ -610,30 +399,29 @@ let pollT = null;
 let pulling = false;
 let misses = 0;                    // неудачных подгрузок state.js подряд
 let lastStamp = null;              // метка отрисованного состояния — против лишних перерисовок
-let booted = false;
-// Что пользователь раскрыл и отфильтровал — переживает перерисовку на каждом событии.
-const UI = {filter: 'all', open: {}};
 
 // ——— живые таймеры ———————————————————————————————————————————————
 // Всё время считается из меток state.js. Незакрытый интервал тикает от текущего момента.
-const toMs = v => { const t = v ? new Date(v).getTime() : NaN; return isNaN(t) ? null : t; };
 const spanMs = (from, to) => {
-  const a = toMs(from);
-  if (a == null) return null;
-  const b = to ? toMs(to) : Date.now();
-  return Math.max(0, (b == null ? Date.now() : b) - a);
+  const a = from ? new Date(from).getTime() : NaN;
+  if (isNaN(a)) return null;
+  const b = to ? new Date(to).getTime() : Date.now();
+  return Math.max(0, b - a);
 };
 // ——— активное время ——————————————————————————————————————————————
 // Часы прогона показывают работу, а не календарь: ушёл человек на сутки — часы стоят.
-// Промежуток между соседними метками длиннее порога — это простой, а не работа.
-// Порог — сорок пять минут: на реальных прогонах работа между метками укладывается
-// в час, а простои идут часами и сутками (444 минуты, 4207, 7814).
-// Ожидание ответа пользователя (waits, waiting) вычитается целиком: это время
-// человека, а не сборки, и на дашборде оно идёт отдельным счётчиком.
+// Никаких дополнительных записей для этого не нужно. state.js и так усеян метками —
+// старт, стадии, таски, updatedAt, — и промежуток между соседними метками длиннее порога
+// это простой, а не работа. Порог тот же, что у «молчания» ниже: сорок пять минут.
+// Замерено на реальных прогонах 2026-08-19: между метками работа укладывается в час,
+// а простои идут часами и сутками (444 минуты, 4207, 7814), так что грубая обрезка
+// ошибается на единицы процентов и при этом не требует от агента ни одной новой правки.
+const IDLE_CAP_MS = 2700000;
 let MARKS = [];
-let WAITS = [];
-// `updatedAt` перезаписывается, поэтому страница помнит и то, что видела сама —
-// для прогонов, начатых до журнала beats. Хранится по прогону, переживает перезагрузку.
+// `updatedAt` — единственная скользящая метка: агент перезаписывает её, и прошлый пульс
+// из файла пропадает. Поэтому страница запоминает каждое значение, которое видела: без
+// этого счётчик прыгал назад на величину порога в тот момент, когда агент возвращался
+// после простоя (проверено 2026-08-19). Хранится по прогону, переживает перезагрузку.
 function rememberBeats(S){
   const key = 'autopilot-beats:' + (S.slug || '') + ':' + (S.startedAt || '');
   try {
@@ -647,54 +435,30 @@ function rememberBeats(S){
 }
 function collectMarks(S){
   const out = [];
-  const push = v => { const t = toMs(v); if (t != null) out.push(t); };
+  const push = v => { const t = v ? new Date(v).getTime() : NaN; if (!isNaN(t)) out.push(t); };
   push(S.startedAt); push(S.updatedAt); push(S.finishedAt);
-  (S.beats || []).forEach(push);
-  rememberBeats(S).forEach(push);
+  (S.beats || []).forEach(push);                    // журнал пульса, если прогон его ведёт
+  rememberBeats(S).forEach(push);                   // и то, что страница видела своими глазами
   (S.stages || []).forEach(x => { push(x.startedAt); push(x.finishedAt); });
   (S.tickets || []).forEach(x => { push(x.startedAt); push(x.finishedAt); });
-  (S.waits || []).forEach(x => { push(x.from); push(x.to); });
+  ((S.polish || {}).rounds || []).forEach(x => push(x.finishedAt));
   return Array.from(new Set(out)).sort((a, b) => a - b);
 }
-function collectWaits(S){
-  const out = [];
-  (S.waits || []).forEach(w => {
-    const a = toMs(w.from), b = toMs(w.to);
-    if (a != null && b != null && b > a) out.push([a, b]);
-  });
-  if (S.waiting && !S.finishedAt) {
-    const a = toMs(S.waiting.since);
-    if (a != null) out.push([a, null]);
-  }
-  return out;
-}
-function waitedIn(a, b){
-  let s = 0;
-  WAITS.forEach(([x, y]) => {
-    const hi = Math.min(b, y == null ? Date.now() : y), lo = Math.max(a, x);
-    if (hi > lo) s += hi - lo;
-  });
-  return s;
-}
-// Сумма промежутков между метками без ожидания пользователя; каждый обрезан по порогу простоя.
+// Сумма промежутков между метками; каждый обрезан по порогу простоя.
 function activeMs(from, to){
-  const a = toMs(from);
-  if (a == null) return null;
-  const b = (to && toMs(to)) || Date.now();
+  const a = from ? new Date(from).getTime() : NaN;
+  if (isNaN(a)) return null;
+  const b = to ? new Date(to).getTime() : Date.now();
   if (b <= a) return 0;
   const pts = [a].concat(MARKS.filter(t => t > a && t < b), [b]);
   let s = 0;
-  for (let i = 1; i < pts.length; i++) {
-    const gap = pts[i] - pts[i-1] - waitedIn(pts[i-1], pts[i]);
-    s += Math.min(Math.max(0, gap), IDLE_CAP_MS);
-  }
+  for (let i = 1; i < pts.length; i++) s += Math.min(pts[i] - pts[i-1], IDLE_CAP_MS);
   return s;
 }
 // Стоят ли часы прямо сейчас — то есть тянется ли простой дольше порога.
-// Ожидание ответа — не простой: у него своя подпись.
 function idleNow(){
   const S = window.STATE || {};
-  if (!S || S.finishedAt || S.waiting) return false;
+  if (!S || S.finishedAt) return false;
   const last = MARKS.length ? MARKS[MARKS.length - 1] : null;
   return last != null && Date.now() - last > IDLE_CAP_MS;
 }
@@ -704,70 +468,62 @@ const fmtClock = ms => {
   const p = n => String(n).padStart(2,'0');
   return h ? `${h}:${p(m)}:${p(ss)}` : `${m}:${p(ss)}`;
 };
-const fmtDur = m => m == null ? '—'
-  : m < 60 ? m + ' ' + CUR.min : Math.floor(m/60) + ' ' + CUR.hr + ' ' + String(m%60).padStart(2,'0') + ' ' + CUR.min;
-const hhmm = iso => { const t = toMs(iso); if (t == null) return ''; const d = new Date(t);
-  return String(d.getHours()).padStart(2,'0') + ':' + String(d.getMinutes()).padStart(2,'0'); };
 // Открытый интервал получает data-live — его каждую секунду обновляет tick().
 function timerHTML(from, to){
   const ms = activeMs(from, to);
   if (ms == null) return '—';
-  return to ? fmtClock(ms) : `<span data-live data-from="${from}">${fmtClock(ms)}</span>`;
+  return to ? `<span>${fmtClock(ms)}</span>`
+            : `<span data-live data-from="${from}">${fmtClock(ms)}</span>`;
 }
 function agoText(iso){
   const ms = spanMs(iso, null);
   if (ms == null) return '—';
   const s = Math.floor(ms/1000);
-  if (s < 60) return CUR.ago.s(s);
+  if (s < 60) return CUR.agoSec(s);
   const m = Math.floor(s/60);
-  return m < 60 ? CUR.ago.m(m) : CUR.ago.h(Math.floor(m/60), m%60);
-}
-function agoShort(iso){
-  const ms = spanMs(iso, null);
-  if (ms == null) return '';
-  const m = Math.floor(ms/60000);
-  return m < 1 ? CUR.agoShort.s : m < 60 ? CUR.agoShort.m(m) : CUR.agoShort.h(Math.floor(m/60));
+  return m < 60 ? CUR.agoMin(m) : CUR.agoHr(Math.floor(m/60), m%60);
 }
 function tick(){
   const stopped = idleNow();
   document.querySelectorAll('[data-live][data-from]').forEach(el => {
     el.textContent = fmtClock(activeMs(el.dataset.from, null));
+    el.classList.toggle('paused', stopped);          // часы стоят — видно, что это не поломка
   });
-  document.querySelectorAll('[data-since]').forEach(el => {
-    el.textContent = fmtClock(spanMs(el.dataset.since, null));
+  document.querySelectorAll('[data-idle-note]').forEach(el => {
+    el.hidden = !stopped;
   });
-  document.querySelectorAll('[data-idle-note]').forEach(el => { el.hidden = !stopped; });
   document.querySelectorAll('[data-ago]').forEach(el => {
     el.textContent = agoText(el.dataset.ago);
     // Молчание — повод присмотреться, но только когда никто не работает.
-    // Пока таск идёт, записей внутри него нет по устройству процесса:
-    // порог тогда — не пять минут, а заметно дольше самого долгого таска.
+    // Пока хотя бы один таск идёт, записей внутри него нет по устройству
+    // процесса: оркестратор пишет на границах, а таск живёт десятки минут.
+    // Порог тогда — не пять минут, а заметно дольше самого долгого таска.
     const S = window.STATE || {};
     const busy = (S.tickets || []).some(t =>
       t.status === 'in-progress' || t.status === 'review' || t.status === 'repair');
-    el.classList.toggle('stale', !S.finishedAt && !S.waiting
+    el.classList.toggle('stale', !S.finishedAt
       && spanMs(el.dataset.ago, null) > (busy ? 2700000 : 300000));
-  });
-  document.querySelectorAll('[data-ago-short]').forEach(el => {
-    el.textContent = agoShort(el.dataset.agoShort);
   });
 }
 
 // ——— автообновление ——————————————————————————————————————————————
 // Страница не перезагружается: она подтягивает state.js заново отдельным тегом.
-// Встроенные панели (Claude Desktop, IDE-вьюверы) глушат навигацию — и
-// location.reload(), и <meta http-equiv="refresh"> там молча ничего не делают,
-// а загрузку подресурсов панель не трогает. Проверено измерением: reload и meta
-// refresh не сработали ни разу, подгрузка тега — двенадцать раз из двенадцати.
+// Так сделано потому, что встроенные панели (Claude Desktop, IDE-вьюверы) глушат
+// навигацию — и location.reload(), и <meta http-equiv="refresh"> там молча ничего
+// не делают, а вот загрузку подресурсов панель не трогает. Проверено измерением:
+// reload и meta refresh не сработали ни разу, подгрузка тега — двенадцать раз из
+// двенадцати. Побочная выгода — «обновить» больше не значит «потерять место на
+// странице», выделение и позицию прокрутки перерисовка сохраняет.
 // Но подресурсы живут только у страницы, у которой есть адрес. Панель Claude не
 // открывает file:// как страницу — она вклеивает HTML в data:text/html, а оттуда
 // origin равен null: state.js не грузится ни относительным путём, ни абсолютным
-// file://, ни через fetch. Поэтому состояние вписано ещё и внутрь страницы.
-// Живое обновление остаётся за http (панель через preview_start, обычный браузер).
-// Видимость НЕ проверяем: те же панели держат document.hidden === true всё время.
-// rev растёт на каждой записи ap.py — и на синхронизации, которая не меняет
-// updatedAt, но может закрыть этап или пересчитать манифест.
-const stampOf = S => (S.rev || '') + '|' + (S.updatedAt || '') + '|' + (S.finishedAt || '') + '|' + (S.tickets || []).length;
+// file://, ни через fetch. Поэтому состояние вписано ещё и внутрь страницы: там,
+// где адреса нет, дашборд показывает снимок и молчит про обновления вместо того
+// чтобы показывать пустой экран. Живое обновление остаётся за http (панель через
+// preview_start, обычный браузер) — phases/0-instruments.md.
+// Видимость НЕ проверяем: те же панели держат document.hidden === true всё время,
+// хотя пользователь смотрит именно туда.
+const stampOf = S => (S.updatedAt || '') + '|' + (S.finishedAt || '') + '|' + (S.tickets || []).length;
 
 function applyState(){
   const S = window.STATE;
@@ -792,7 +548,6 @@ function showLink(){
   if (!el) return;
   const lost = SERVED && misses >= 2 && !(window.STATE && window.STATE.finishedAt);
   el.hidden = !lost;
-  el.parentNode.hidden = !lost;
   if (lost) el.textContent = CUR.lost;
 }
 
@@ -803,8 +558,9 @@ function pullState(done){
   const s = document.createElement('script');
   // Метка времени в запросе — иначе file:// отдаст скрипт из кеша.
   s.src = 'state.js?t=' + Date.now();
-  // Ошибка — обычное дело: файл могли поймать в момент записи. Две подряд —
-  // уже не запись, а мёртвый сервер: тогда страница говорит об этом.
+  // Ошибка — обычное дело: файл могли поймать в момент записи. Старое состояние
+  // остаётся на экране, следующий круг через десять секунд подберёт целое.
+  // Две подряд — уже не запись, а мёртвый сервер: тогда страница говорит об этом.
   const end = ok => {
     s.remove();
     pulling = false;
@@ -830,417 +586,383 @@ function refreshNow(btn){
   if (btn) btn.classList.add('busy');
   const started = Date.now();
   pullState(ok => {
-    if (!ok && btn) misses = Math.max(misses, 2);  // нажал и не получил — сказать сразу
+    if (!ok) misses = Math.max(misses, 2);         // нажал и не получил — сказать сразу
     showLink();
     // Крутится хотя бы полсекунды: мгновенный ответ иначе не отличить от «не нажалось».
     setTimeout(() => {
-      document.querySelectorAll('[data-refresh]').forEach(b => b.classList.remove('busy'));
+      document.querySelectorAll('.seg button[data-refresh]').forEach(b => b.classList.remove('busy'));
     }, Math.max(0, 500 - (Date.now() - started)));
     pollState();
   });
 }
-
-const esc = s => String(s == null ? '' : s).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
-
-// Статус таска → цвет полосы, значок, подписи. Ремонт — не «ещё немного
-// разработки»: таск уже написан и вернулся с ревью, поэтому у него свой цвет.
-const KIND = {
-  'done':        {k:'done', bar:'f-done', icon:'check'},
-  'in-progress': {k:'now',  bar:'f-now stripes', icon:'pen', on:true},
-  'review':      {k:'rev',  bar:'f-rev', icon:'clock', on:true},
-  'repair':      {k:'fix',  bar:'f-fix', icon:'rotate', on:true},
-  'failed':      {k:'bad',  bar:'f-bad', icon:'x', on:true},
-  'pending':     {k:'wait', bar:'f-wait', icon:'hourglass'}
-};
-const kindOf = t => KIND[t.status] || KIND.pending;
-const REQ_KIND = {'done':'done', 'in-ticket':'work', 'in-spec':'work', 'open':'open',
-  'placeholder':'placeholder', 'deferred':'deferred', 'dropped':'dropped'};
-const REQ_PILL = {done:'p-done', work:'p-mut', open:'p-mut', placeholder:'p-now', deferred:'p-mut', dropped:'p-mut'};
-const REQ_RANK = {placeholder:0, deferred:1, dropped:2};
 
 function render(lang){
   const L = I18N[lang] || I18N.ru;
   CUR = L;
   const S = STATE, T = S.tickets || [], R = S.requirements || {};
   MARKS = collectMarks(S);
-  WAITS = collectWaits(S);
-  const fin = !!S.finishedAt;
-  const waiting = !fin && S.waiting ? S.waiting : null;
-
-  const by = st => T.filter(t => t.status === st);
-  const done = by('done'), writing = by('in-progress'), inReview = by('review'),
-        inRepair = by('repair'), failedT = by('failed');
-  const running = writing.concat(inReview, inRepair);
-  const pending = T.length - done.length - running.length - failedT.length;
+  const esc = s => String(s == null ? '' : s).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+  // Таск живёт в трёх активных состояниях, а не в одном: пишется — проверяется —
+  // чинится. Ревью и ремонт идут, пока летит следующий таск, поэтому «готово 2 из 8»
+  // без них — самый частый вопрос к экрану: «а с третьим-то что».
+  const ACTIVE = ['in-progress', 'review', 'repair'];
+  const done = T.filter(t => t.status === 'done');
+  const writing = T.filter(t => t.status === 'in-progress');
+  const inReview = T.filter(t => t.status === 'review');
+  const inRepair = T.filter(t => t.status === 'repair');
+  const running = T.filter(t => ACTIVE.includes(t.status));
+  const failedT = T.filter(t => t.status === 'failed');
+  const waiting = T.length - done.length - running.length - failedT.length;
   const live = Math.max(0, (R.total || 0) - (R.dropped || 0));
 
   const mins = t => (t.startedAt && t.finishedAt)
     ? Math.max(1, Math.round(activeMs(t.startedAt, t.finishedAt) / 60000)) : null;
   const durations = done.map(mins).filter(Boolean).sort((a,b) => a-b);
   const median = durations.length ? durations[Math.floor(durations.length/2)] : null;
+  const fmtDur = m => m == null ? '—'
+    : m < 60 ? m + ' ' + L.min : Math.floor(m/60) + ' ' + L.hr + ' ' + String(m%60).padStart(2,'0') + ' ' + L.min;
 
-  // Этапы: канонический порядок, поверх него — то, что прислал state.js.
-  const given = Array.isArray(S.stages) ? S.stages.filter(Boolean) : [];
-  const stages = STAGE_IDS.map(id => given.find(s => s.id === id) || {id, status:'pending'});
-  const stName = s => L.stages[s.id] || s.id;
-  const activeStage = stages.find(s => s.status === 'active');
-  const failedStage = stages.find(s => s.status === 'failed');
-  const t0 = String(S.tier).toUpperCase() === 'T0';
-  const stage = id => stages.find(s => s.id === id) || {};
-
-  // ——— сколько осталось ———
-  // По цепочке тасков в минутах, а не «медиана × длина цепочки»: иначе таск,
-  // который идёт двадцать седьмую минуту, стоит в оценке как не начатый.
-  // Плюс то, что идёт после разработки: ревью всей ветки и приёмка —
-  // на реальных прогонах это почти половина времени, и без них оценка врала.
   const byId = Object.fromEntries(T.map(t => [t.id, t]));
-  const leftFor = t => {
-    if (!t || t.status === 'done') return 0;
-    const full = median || 10;
-    if (t.status === 'review') return full * 0.2;
-    if (t.status === 'repair') return full * 0.5;
-    if (t.status === 'in-progress' && t.startedAt)
-      return Math.max(1, full - (activeMs(t.startedAt, null) || 0) / 60000);
-    return full;
-  };
   const memo = {};
-  function chainMin(id, seen){
+  function depth(id, seen){
     const t = byId[id];
     if (!t || t.status === 'done') return 0;
     if (memo[id] != null) return memo[id];
+    if (seen.has(id)) return 1;
+    seen.add(id);
+    const d = 1 + Math.max(0, ...(t.blockedBy || []).map(b => depth(b, seen)));
+    seen.delete(id);
+    return memo[id] = d;
+  }
+  const cp = Math.max(0, ...T.map(t => depth(t.id, new Set())));
+
+  // Оценка считается в минутах по цепочке, а не «медиана × длина цепочки»: иначе
+  // таск, который идёт двадцать седьмую минуту, стоит в оценке как не начатый,
+  // и на последнем почти доделанном таске экран пишет «21 … 39 мин».
+  const memoMin = {};
+  const leftFor = t => {
+    if (!t || t.status === 'done') return 0;
+    const full = median || 10;
+    // код написан — осталась проверка и, может быть, правка по находке
+    if (t.status === 'review') return full * 0.2;
+    if (t.status === 'repair') return full * 0.5;
+    if (t.status === 'in-progress' && t.startedAt) {
+      const elapsed = (activeMs(t.startedAt, null) || 0) / 60000;
+      return Math.max(1, full - elapsed);          // уже идёт — осталось меньше
+    }
+    return full;
+  };
+  function chainMin(id, seen){
+    const t = byId[id];
+    if (!t || t.status === 'done') return 0;
+    if (memoMin[id] != null) return memoMin[id];
     if (seen.has(id)) return leftFor(t);
     seen.add(id);
     const d = leftFor(t) + Math.max(0, ...(t.blockedBy || []).map(b => chainMin(b, seen)));
     seen.delete(id);
-    return memo[id] = d;
+    return memoMin[id] = d;
   }
   const cpMin = Math.max(0, ...T.map(t => chainMin(t.id, new Set())));
-  const stageMin = id => { const s = stage(id); return s.startedAt ? (activeMs(s.startedAt, s.finishedAt) || 0) / 60000 : 0; };
-  let left = null, lateEta = false;
-  if (!fin && !waiting && !failedStage) {
-    const buildSoFar = stageMin('build');
-    if (activeStage && activeStage.id === 'build' && median) {
-      left = cpMin + Math.max(10, 0.5 * (buildSoFar + cpMin)) + 8;
-    } else if (activeStage && activeStage.id === 'review') {
-      left = Math.max(5, 0.6 * buildSoFar - stageMin('review')) + 8; lateEta = true;
-    } else if (activeStage && activeStage.id === 'final') {
-      left = Math.max(3, 10 - stageMin('final')); lateEta = true;
-    }
-  }
-  const eta = left ? [Math.max(1, Math.round(left * 0.75)), Math.max(2, Math.round(left * 1.4))] : null;
-  const etaText = eta ? (eta[1] < 60 ? `${eta[0]}–${eta[1]}<small>${L.min}</small>`
-    : `${fmtDur(eta[0])} — ${fmtDur(eta[1])}`) : '';
+  const eta = (median && cpMin > 0)
+    ? [Math.max(1, Math.round(cpMin*0.75)), Math.max(2, Math.round(cpMin*1.4))] : null;
 
-  // ——— шапка ———
-  const names = list => list.map(t => q(esc(t.title), L.lang)).join(', ');
-  let heroCls = '', stateLine, h2, lead = '', big = '', bigSub = '', hint = '';
-  if (fin) {
-    heroCls = 'won';
-    const k = (S.debt?.emptyEnv || []).length, p = (S.debt?.placeholders || []).length;
-    stateLine = `<span class="badge-ic">${ic('check','xs')}</span>${L.doneState}`;
-    h2 = esc(S.result || L.doneDefault);
-    lead = k || p ? L.doneNeed(k, p) : L.doneNothing;
-    big = fmtClock(activeMs(S.startedAt, S.finishedAt));
-    bigSub = L.doneBig(hhmm(S.finishedAt));
-  } else if (waiting) {
-    heroCls = 'ask';
-    stateLine = `<span class="live" aria-hidden="true"></span>${L.waitState}`;
-    h2 = L.waitH2[waiting.kind] || L.waitState;
-    lead = waiting.note ? esc(waiting.note) : '';
-    hint = `<span class="hint">${ic('msg','m')}${L.waitHint}</span>`;
-    big = `<span data-since="${esc(waiting.since)}">${fmtClock(spanMs(waiting.since, null))}</span>`;
-    bigSub = L.waitBig;
-  } else if (failedStage) {
-    heroCls = 'bad';
-    stateLine = `<span class="badge-ic">${ic('x','xs')}</span>${L.failState}`;
-    h2 = L.failH2(stName(failedStage));
-    lead = esc(failedStage.note || '');
-  } else {
-    const cur = activeStage || stages.find(s => s.status === 'pending') || stages[stages.length - 1];
-    stateLine = `<span class="live" aria-hidden="true"></span>${L.stateRun[cur.id] || stName(cur)}`;
-    if (cur.id === 'build' && T.length) {
-      h2 = done.length === T.length ? L.buildAllDone(T.length) : L.buildH2(done.length, T.length, running.length);
-      lead = [writing.length ? L.leadWriting(names(writing)) : '', inReview.length ? L.leadReview(names(inReview)) : '',
-        inRepair.length ? L.leadRepair(names(inRepair)) : '', failedT.length ? L.leadFailed(names(failedT)) : '']
-        .filter(Boolean).join(' ') || (done.length < T.length ? L.leadIdle : '');
-    } else {
-      h2 = L.h2Run[cur.id] || stName(cur);
-      lead = cur.note ? esc(cur.note) : (L.leadRun[cur.id] || '');
-    }
-    if (eta) { big = etaText; bigSub = lateEta ? L.etaLate : L.etaLbl; }
-    else if (cur.startedAt) { big = timerHTML(cur.startedAt, null); bigSub = L.stageClock(stName(cur)); }
-  }
-  // Шкала этапов: пройденное залито, текущее — в полоску, пропущенное — штриховкой.
-  const segs = stages.map(s => {
-    const st = s.status;
-    let cls = 's-pend', fill = '0%', inner = '', time = L.ahead;
-    if (st === 'done') { cls = 's-done'; fill = '100%'; time = s.startedAt ? timerHTML(s.startedAt, s.finishedAt) : '—'; }
-    else if (st === 'skipped') { cls = 's-skip'; time = L.skipped; }
-    else if (st === 'failed') { cls = 's-fail'; fill = '100%'; time = L.failedSt; }
-    else if (st === 'active') {
-      cls = 's-now'; inner = 'stripes';
-      fill = s.id === 'build' && T.length ? Math.max(8, Math.round(done.length / T.length * 100)) + '%' : '50%';
-      time = waiting ? L.waitingSt : (s.startedAt ? timerHTML(s.startedAt, null) : '—');
-    }
-    return `<div class="${cls}"><div class="seg"><i class="${inner}" style="width:${fill}"></i></div>
-      <span class="s-name">${esc(stName(s))}</span><span class="s-time">${time}</span></div>`;
-  }).join('');
-  const hero = `<section class="hero ${heroCls} w" aria-live="polite">
-    <div class="hero-top">
-      <div class="hero-main"><div class="state">${stateLine}</div><h2>${h2}</h2>
-        ${lead ? `<p class="lead">${lead}</p>` : ''}${hint}</div>
-      ${big ? `<div class="big"><b>${big}</b><span>${bigSub}</span>
-        <span class="paused" data-idle-note hidden>${L.paused}</span></div>` : ''}
-    </div>
-    <div class="track" role="list">${segs}</div>
-  </section>`;
+  // Этапы: канонический порядок, поверх него — то, что прислал state.js.
+  const given = Array.isArray(S.stages) ? S.stages.filter(Boolean) : [];
+  const stages = STAGE_IDS.map(id => given.find(s => s.id === id) || {id, status:'pending'})
+    .concat(given.filter(s => !STAGE_IDS.includes(s.id)));
+  const stName = s => L.stages[s.id] || s.id;
+  const activeStage = stages.find(s => s.status === 'active');
+  const curStage = activeStage || stages.find(s => s.status !== 'done' && s.status !== 'skipped');
+  const stageNo = curStage ? stages.indexOf(curStage) + 1 : stages.length;
+  const t0 = String(S.tier).toUpperCase() === 'T0';
+  const buildStage = stages.find(s => s.id === 'build');
+  const buildMs = buildStage && buildStage.startedAt && buildStage.finishedAt
+    ? activeMs(buildStage.startedAt, buildStage.finishedAt) : null;
 
-  // ——— плитки ———
-  const reqList = S.reqList || [];
-  const rk = {done:R.done||0, work:(R.inTicket||0)+(R.inSpec||0), ph:R.placeholder||0, def:R.deferred||0, drop:R.dropped||0};
-  rk.open = Math.max(0, (R.total||0) - rk.done - rk.work - rk.ph - rk.def - rk.drop);
-  const reqStack = `<div class="stack" aria-hidden="true">${[[rk.done,'f-done'],[rk.ph,'f-now'],[rk.work + rk.open,'f-idle'],[rk.def,'f-q']]
-    .filter(x => x[0]).map(([n, c]) => `<i class="${c}" style="flex:${n}"></i>`).join('')}</div>`;
-  const tileReq = `<section class="card tile w"><span class="tk">${L.tReqs}</span>${R.total
-    ? `<span class="tv">${rk.done}<small>${L.of} ${live}</small></span>${reqStack}
-       <span class="ts">${[L.reqParts.done, rk.work ? L.reqParts.work(rk.work) : '', rk.open ? L.reqParts.open(rk.open) : '', rk.ph ? L.reqParts.ph(rk.ph) : '',
-         rk.def ? L.reqParts.def(rk.def) : '', rk.drop ? L.reqParts.drop(rk.drop) : ''].filter(Boolean).join(' · ')}</span>`
-    : `<span class="tv dim">—</span><span class="ts">${L.reqLater}</span>`}</section>`;
-  const retries = T.reduce((s,t) => s + (t.retries||0), 0), repairs = T.reduce((s,t) => s + (t.repairs||0), 0);
-  const tileTk = `<section class="card tile w"><span class="tk">${L.tTickets}</span>${T.length
-    ? `<span class="tv">${done.length}<small>${L.of} ${T.length}</small></span>
-       <div class="sq" aria-hidden="true">${T.map(t => `<i class="${kindOf(t).bar}"></i>`).join('')}</div>
-       <span class="ts">${(done.length === T.length
-         ? [L.tkParts.all, repairs ? L.tkParts.repair(repairs) : '', retries ? L.tkParts.retry(retries) : '']
-         : [writing.length ? L.tkParts.now(writing.length) : '', inReview.length ? L.tkParts.rev(inReview.length) : '',
-            inRepair.length ? L.tkParts.fix(inRepair.length) : '', failedT.length ? L.tkParts.bad(failedT.length) : ''])
-         .filter(Boolean).join(' · ') || L.leadIdle}</span>`
-    : `<span class="tv dim">${t0 ? `<span style="font-size:.6em">${L.noSplit}</span>` : '—'}</span><span class="ts">${t0 ? '' : L.tkLater}</span>`}</section>`;
-  const last = done[done.length - 1];
-  const tests = S.tests || (last && last.tests) || null;
-  const tileTests = `<section class="card tile w"><span class="tk">${L.tTests}</span>${tests
-    ? `<span class="tv">${tests.passed}</span><span class="okb ${tests.failed ? 'f-bad' : 'f-done'}">${ic(tests.failed ? 'x' : 'check','xs')}${
-        tests.failed ? L.testsBad(tests.failed) : L.testsOk}</span><span class="ts">${fin ? L.testsFinal : L.testsSub}</span>`
-    : `<span class="tv dim">—</span><span class="ts">${L.testsLater}</span>`}</section>`;
-  const B = S.blind;
-  const tile4 = fin && B
-    ? `<section class="card tile w"><span class="tk">${L.tBlind}</span><span class="tv">${esc(B.matched)}<small>${L.of} ${esc(B.checked)}</small></span>
-        <div class="stack" aria-hidden="true"><i class="f-done" style="flex:${+B.matched||0}"></i><i class="f-now" style="flex:${Math.max(0,(+B.checked||0)-(+B.matched||0))}"></i></div>
-        <span class="ts">${L.blindSub((B.mismatches||[]).length)}</span></section>`
-    : `<section class="card tile w"><span class="tk">${L.tTime}</span><span class="tv">${S.startedAt ? timerHTML(S.startedAt, S.finishedAt) : '—'}</span>
-        <span class="ts">${L.timeSub}${median ? ' · ' + L.median(median) : ''}</span></section>`;
+  // Прогресс проекта целиком. Веса — это доли времени, а не «этап = 1/8»: разработка идёт
+  // часами, подготовка минуты. Внутри разработки шкала дробится по готовым таскам, поэтому
+  // она ползёт с каждым таском, а не стоит на месте полдня и потом прыгает.
+  const STAGE_WEIGHT = {preflight:1, manifest:1, briefing:1, spec:2, plan:1, build:6, review:2, final:1};
+  const stageFrac = s => {
+    if (s.status === 'done' || s.status === 'skipped') return 1;
+    if (s.status !== 'active') return 0;                      // pending и failed — ноль
+    if (s.id === 'build' && T.length) return Math.max(0.05, done.length / T.length);
+    return 0.5;
+  };
+  const totalW = stages.reduce((a,s) => a + (STAGE_WEIGHT[s.id] ?? 1), 0);
+  const overallPct = totalW
+    ? Math.round(stages.reduce((a,s) => a + (STAGE_WEIGHT[s.id] ?? 1) * stageFrac(s), 0) / totalW * 100) : 0;
+  const stagesDone = stages.filter(s => s.status === 'done' || s.status === 'skipped').length;
 
-  // ——— ход сборки ———
-  // Полоса показывает СОСТОЯНИЕ, а не долю: горизонтальная заливка в списке
-  // задач читается как прогресс всегда. Длительность — цифрой справа.
-  let buildCard = '';
-  if (T.length) {
-    const counts = {};
-    T.forEach(t => { const k = kindOf(t).k; counts[k] = (counts[k] || 0) + 1; });
-    const legend = ['done','now','rev','fix','bad','wait'].filter(k => counts[k]).map(k =>
-      `<span class="lg"><i class="${{done:'f-done',now:'f-now',rev:'f-rev',fix:'f-fix',bad:'f-bad',wait:'f-wait'}[k]}"></i>${L.kinds[k]} <b>${counts[k]}</b></span>`).join('');
-    const waves = [...new Set(T.map(t => t.wave ?? 1))].sort((a,b) => a-b);
-    const rows = waves.map(w => {
-      const inWave = T.filter(t => (t.wave ?? 1) === w)
-        .sort((a,b) => String(a.id).localeCompare(String(b.id), undefined, {numeric:true}));
-      const blockers = [...new Set(inWave.flatMap(t => t.blockedBy || []))].filter(b => byId[b] && byId[b].status !== 'done');
-      const sub = inWave.every(t => t.status === 'pending') && blockers.length ? L.waveWaits(blockers)
-        : inWave.length > 1 ? L.waveSub(inWave.length) : '';
-      return `<div class="wave">${L.wave(w)}${sub ? ` <span>${sub}</span>` : ''}</div>` + inWave.map(t => {
-        const k = kindOf(t);
-        const time = t.status === 'done' ? fmtDur(mins(t)) : (t.startedAt && t.status !== 'pending') ? timerHTML(t.startedAt, t.finishedAt) : '—';
-        const why = String(t.review || '').replace(/^(да|yes)\s*[—–-]\s*/i, '');
-        const note = t.status === 'repair' && (t.repairFindings || []).length ? ['fix', L.noteRepair(t.repairFindings[t.repairFindings.length - 1])]
-          : t.status === 'review' && /^(да|yes)/i.test(t.review || '') && why ? ['rev', L.noteReview(why)]
-          : t.status === 'failed' && (t.concerns || []).length ? ['bad', t.concerns.join('; ')] : null;
-        const extra = t.status === 'done' && (t.repairs || t.retries)
-          ? ' · ' + [t.repairs ? L.tkParts.repair(t.repairs) : '', t.retries ? L.tkParts.retry(t.retries) : ''].filter(Boolean).join(' · ') : '';
-        return `<div class="tl"><span class="tl-id${k.on ? ' on' : ''}">${esc(t.id)}</span>
-          <div class="bar ${k.bar}" title="${esc(t.title)}"><span class="nm">${esc(t.title)}</span>
-            <span class="chipin">${ic(k.icon,'xs')}<span class="lbl">${L.chip[k.k]}${extra}</span></span></div>
-          <span class="tl-time ${k.on ? k.k : ''}">${time}</span>
-          ${note ? `<div class="tl-note ${note[0]}">${ic(KIND[t.status].icon)}<span>${esc(note[1])}</span></div>` : ''}</div>`;
-      }).join('');
+  const coverage = live ? Math.round((R.done||0)/live*100) : 0;
+  // Таск на ревью уже написан. Считать его нулём — врать в меньшую сторону ровно
+  // там, где до разделения статусов врали в большую, помечая код готовым до проверки.
+  const ticketPct = T.length
+    ? Math.round((done.length + 0.75*(inReview.length + inRepair.length))/T.length*100) : 0;
+  const retries = T.reduce((s,t) => s + (t.retries||0), 0);
+  const last = done[done.length-1];
+  // Полный прогон, если он записан; иначе — тесты последнего захода: таска или T0-сборки.
+  const tests = S.tests || (last && last.tests) || (S.singlePass && S.singlePass.tests) || null;
+  const debtN = (S.debt?.placeholders?.length||0) + (S.debt?.assumptions?.length||0) + (S.debt?.emptyEnv?.length||0);
+
+  const ring = pct => {
+    const r = 34, c = 2*Math.PI*r;
+    return `<svg class="ring" viewBox="0 0 80 80" width="84" height="84" aria-hidden="true">
+      <circle cx="40" cy="40" r="${r}" fill="none" stroke="var(--ghost)" stroke-width="9"/>
+      <circle cx="40" cy="40" r="${r}" fill="none" stroke="var(--accent)" stroke-width="9"
+        stroke-linecap="round" stroke-dasharray="${c}" stroke-dashoffset="${c*(1-pct/100)}"
+        transform="rotate(-90 40 40)"/></svg>`;
+  };
+  // Ремонт — не «ещё немного разработки»: таск уже написан, вернулся с ревью и
+  // переписывается. Пока он делил цвет с in-progress, различала их только
+  // подпись, и волна возвратов на экране читалась как обычная работа.
+  const statusColor = s => s === 'done' ? 'var(--ok)' : s === 'failed' ? 'var(--bad)'
+    : s === 'review' ? 'var(--info)' : s === 'repair' ? 'var(--fix)'
+    : s === 'in-progress' ? 'var(--warn)' : 'var(--line)';
+
+  const waves = [...new Set(T.map(t => t.wave ?? 1))].sort((a,b) => a-b);
+  // Полоса показывает СОСТОЯНИЕ, а не долю. Раньше её ширина была длительностью
+  // относительно самого долгого таска — и готовый таск на 19 из 28 минут выглядел
+  // «сделанным на 68%». Горизонтальная заливка в списке задач читается как прогресс
+  // всегда, поэтому: готов — целиком, идёт — целиком со светом и бликом, ждёт —
+  // пустой пунктир. Длительность живёт цифрой справа, где её и читают.
+  const timeline = T.length ? waves.map(w => {
+    const inWave = T.filter(t => (t.wave ?? 1) === w)
+      .sort((a,b) => String(a.id).localeCompare(String(b.id), undefined, {numeric:true}));
+    const rows = inWave.map(t => {
+      const active = ACTIVE.includes(t.status), pend = t.status === 'pending';
+      // у не начатого таска часов нет: «0:00» читается как «идёт и стоит на месте»
+      const clock = (t.startedAt && !pend) ? timerHTML(t.startedAt, t.finishedAt) : '—';
+      // «пишется» — базовый случай и читается по цвету; подписываем то, чего
+      // на этом экране раньше не было, иначе ремонт неотличим от разработки
+      const ph = (t.status === 'review' || t.status === 'repair') ? (L.phase||{})[t.status] : '';
+      return `<div class="row${active?' now':''}${pend?' wait':''}"><b>${esc(t.id)}</b>
+        <div class="track"><div class="fill${pend?' pend':''}${active?' active':''}"
+          style="width:100%${pend?'':';background:'+statusColor(t.status)}"><span class="nm">${
+          esc(t.title)}</span>${ph ? `<em class="ph">${esc(ph)}</em>` : ''}</div></div>
+        <div class="mins">${clock}</div></div>`;
     }).join('');
-    buildCard = `<section class="card w"><div class="whead"><h3 class="wt">${L.build}</h3><div class="legend">${legend}</div></div>${rows}</section>`;
-  } else if (t0 && (activeStage?.id === 'build' || stage('build').status === 'done')) {
-    buildCard = `<section class="card w"><div class="whead"><h3 class="wt">${L.build}</h3></div><div class="empty">${ic('list','m')}<span>${L.t0}</span></div></section>`;
-  } else if (!fin) {
-    buildCard = `<section class="card w"><div class="whead"><h3 class="wt">${L.build}</h3></div><div class="empty">${ic('list','m')}<span>${L.noTickets}</span></div></section>`;
-  }
+    return `<div class="wave">${L.wave(w, inWave.length)}</div>${rows}`;
+  }).join('') : `<div class="empty">${L.noTickets}</div>`;
 
-  // ——— списки ———
-  const list = (key, arr, n, fmt) => {
-    if (!arr || !arr.length) return '';
-    const open = UI.open[key], shown = open ? arr : arr.slice(0, n);
-    return `<ul class="nl n0">${shown.map(x => `<li>${fmt ? fmt(x) : esc(x)}</li>`).join('')}</ul>` + (arr.length > n
-      ? `<button type="button" class="btn-soft" data-more="${key}">${open ? L.collapse + ic('up') : L.more(arr.length - n) + ic('chev')}</button>` : '');
-  };
-  // «файл:строка — суть» → адрес моноширинным, суть обычным текстом.
-  const located = x => { const m = /^(\S+?(?::\d+[\w,-]*|\.\w+))\s+[—–-]\s+(.*)$/.exec(x); return m ? `<span class="mono" style="font-size:.9em;color:var(--mut)">${esc(m[1])}</span> — ${esc(m[2])}` : esc(x); };
-  const env = S.debt?.emptyEnv || [], ph = S.debt?.placeholders || [], asm = S.debt?.assumptions || [];
-  const keysBlock = env.length ? `<div class="need"><div class="nh">${L.envKeys}<span>${env.length}</span></div>
-      <div class="keys">${env.map(k => `<code class="key">${esc(k)}</code>`).join('')}</div></div>` : '';
-  const phBlock = ph.length ? `<div class="need"><div class="nh">${L.placeholders}<span>${ph.length}</span></div>${list('ph', ph, 3, located)}</div>` : '';
-  const asmBlock = asm.length ? `<div class="need"><div class="nh">${L.assumptions}<span>${asm.length}</span></div>${list('asm', asm, 3)}</div>` : '';
-  const needCard = fin
-    ? (env.length || ph.length ? `<section class="card prep w"><div class="whead"><h3 class="wt"><i>${ic('flag')}</i>${L.prep}</h3><span>${env.length + ph.length}</span></div>${keysBlock}${phBlock}</section>` : '')
-    : `<section class="card w"><div class="whead"><h3 class="wt">${L.need}</h3></div>${keysBlock + phBlock + asmBlock
-        || `<p class="muted">${L.needEmpty}</p>`}</section>`;
-  const asmCard = fin && asm.length ? `<section class="card w"><div class="whead"><h3 class="wt">${L.assumptions}</h3><span>${asm.length}</span></div>${list('asm', asm, 3)}</section>` : '';
-  const report = S.report || [], concerns = S.concerns || [], additions = S.additions || [];
-  const reportCard = report.length ? `<section class="card w"><div class="whead"><h3 class="wt">${L.report}</h3><span>${report.length}</span></div>${list('report', report, 3)}</section>` : '';
-  const concernsCard = concerns.length ? `<section class="card w"><div class="whead"><h3 class="wt">${L.concerns}</h3><span>${concerns.length}</span></div>
-      <p class="muted" style="margin-bottom:8px">${L.concernsNote}</p>${list('concerns', concerns, 3, located)}</section>` : '';
-  const addCard = additions.length ? `<section class="card w"><div class="whead"><h3 class="wt">${L.additions}</h3><span>${additions.length}</span></div>${list('add', additions, 3)}</section>` : '';
+  // Ревью и ремонт показываем, только когда они есть: шесть чипов в ряд на пятитасковом
+  // прогоне читаются хуже, чем четыре, а нули не несут ничего.
+  const tlSum = T.length ? `<div class="tlsum">
+      <span class="chip ok">${L.chipDone(done.length)}</span>
+      <span class="chip run">${L.chipRun(writing.length)}</span>
+      ${inReview.length ? `<span class="chip info">${L.chipReview(inReview.length)}</span>` : ''}
+      ${inRepair.length ? `<span class="chip fix">${L.chipRepair(inRepair.length)}</span>` : ''}
+      <span class="chip">${L.chipWait(Math.max(0, waiting))}</span>
+      ${failedT.length ? `<span class="chip bad">${L.chipFailed(failedT.length)}</span>` : ''}
+    </div>` : '';
+  const tlNow = !T.length ? '' : running.length
+    ? `<div class="tlnow"><span class="lbl">${L.nowLbl}</span> ` + running.map(t =>
+        `<b>${esc(t.id)}</b> ${esc(t.title)} <span class="lbl">— ${
+          esc((L.phase||{})[t.status] || '')}</span> <span class="nowclock" style="color:${
+          statusColor(t.status)}">${
+          t.startedAt ? timerHTML(t.startedAt, null) : '—'}</span>`).join(' · ') + '</div>'
+    : (S.finishedAt || done.length === T.length ? '' : `<div class="tlnow lbl">${L.nowIdle}</div>`);
 
-  const blindCard = B ? `<section class="card w"><div class="whead"><h3 class="wt">${L.blind}</h3></div>
-      <div class="blind-top"><b>${esc(B.matched)}<small>${L.of} ${esc(B.checked)}</small></b><p>${L.blindNote} ${(B.mismatches||[]).length ? L.blindBad : L.blindOk}</p></div>
-      ${(B.mismatches||[]).map(m => { const x = /^([RGA]\d+\w*)\s+[—–-]\s+(.*)$/.exec(m);
-        return `<div class="req"><p>${x ? `<span class="rid">${esc(x[1])}</span>${esc(x[2])}` : esc(m)}</p></div>`; }).join('')}</section>` : '';
-
-  // ——— твои слова ———
-  let wordsCard = '';
-  if (reqList.length) {
-    const rows = reqList.map((r, i) => ({...r, k: REQ_KIND[r.status] || 'open', i}))
-      .sort((a, b) => ((REQ_RANK[a.k] ?? 9) - (REQ_RANK[b.k] ?? 9)) || a.i - b.i);
-    const cnt = {}; rows.forEach(r => { cnt[r.k] = (cnt[r.k] || 0) + 1; });
-    const F = [['all', L.fAll, rows.length, ''], ['done', L.fDone, cnt.done, 'f-done'], ['work', L.fWork, cnt.work, 'f-idle'],
-      ['open', L.fOpen, cnt.open, 'f-idle'], ['placeholder', L.fPh, cnt.placeholder, 'f-now'],
-      ['deferred', L.fDef, cnt.deferred, 'f-q'], ['dropped', L.fDrop, cnt.dropped, 'f-q']].filter(f => f[2]);
-    if (!F.some(f => f[0] === UI.filter)) UI.filter = 'all';
-    const picked = rows.filter(r => UI.filter === 'all' || r.k === UI.filter);
-    const open = UI.open.words, shown = open ? picked : picked.slice(0, 6);
-    wordsCard = `<section class="card w"><div class="whead"><h3 class="wt">${L.words}</h3><span>${L.wordsSub(rows.length)}</span></div>
-      ${F.length > 2 ? `<div class="chips" role="group">${F.map(([id, lbl, n, sw]) =>
-        `<button type="button" class="chip" data-filter="${id}" aria-pressed="${UI.filter === id}">${sw ? `<i class="${sw}"></i>` : ''}${lbl} <span>${n}</span></button>`).join('')}</div>` : ''}
-      ${shown.map(r => `<div class="req"><div style="min-width:0"><p><span class="rid">${esc(r.id)}</span>${esc(r.text)}</p>${
-        r.why ? `<span class="why">${esc(r.why)}</span>` : ''}</div><span class="pill ${REQ_PILL[r.k]}">${L.rs[r.k]}</span></div>`).join('')}
-      ${picked.length > 6 ? `<div class="more"><button type="button" class="btn-soft" data-more="words">${open ? L.collapse + ic('up') : L.showAll(picked.length) + ic('chev')}</button></div>` : ''}
-    </section>`;
-  }
-
-  // ——— проверки ———
-  const G = Object.assign({}, S.gates || {});
-  if (!G.G2 && S.coverage) G.G2 = {ok: true, found: S.coverage.found, fixed: S.coverage.fixed, deferred: S.coverage.deferred};
-  if (!G.G4 && B) G.G4 = {ok: !(B.mismatches || []).length, matched: B.matched, checked: B.checked};
-  const gate = (id, cls, icon, sub) => `<div class="gate"><span class="gi ${cls}">${ic(icon,'xs')}</span><div><div class="gt">${L.gT[id]}</div><div class="gs">${sub}</div></div><span class="gk">${id}</span></div>`;
-  const later = (id, sub) => gate(id, 'wait', 'clock', fin ? L.gNone : sub);
-  const g1 = G.G1 ? (G.G1.ok ? gate('G1','ok','check',L.g1ok(G.G1.total || R.total || 0)) : gate('G1','warn','alert',L.g1bad(G.G1.open || 0)))
-    : waiting && waiting.kind === 'briefing' ? gate('G1','warn','msg',L.g1ask) : later('G1', L.g1later);
-  const g2 = G.G2 ? gate('G2', G.G2.ok ? 'ok' : 'warn', G.G2.ok ? 'check' : 'alert', L.g2(+G.G2.found||0, +G.G2.fixed||0, +G.G2.deferred||0)) : later('G2', L.g2later);
-  const g3 = G.G3 ? (G.G3.ok ? gate('G3','ok','check',L.g3ok(live, T.length)) : gate('G3','bad','x',L.g3bad(G.G3.problems || 0))) : later('G3', L.g3later);
-  const g4 = G.G4 ? gate('G4', G.G4.ok ? 'ok' : 'warn', G.G4.ok ? 'check' : 'alert',
-      L.g4(esc(G.G4.matched), esc(G.G4.checked), Math.max(0, (+G.G4.checked||0) - (+G.G4.matched||0)))) : later('G4', L.g4later);
-  const okGates = ['G1','G2','G3','G4'].filter(g => G[g] && G[g].ok).length;
-  const gatesCard = `<section class="card w"><div class="whead"><h3 class="wt">${L.gates}</h3><span>${L.gatesOf(okGates)}</span></div>${g1}${g2}${g3}${g4}</section>`;
-
-  // ——— лента ———
-  const evText = e => {
-    const V = L.ev;
-    if (e.k === 'stage') return (V.stage[e.act] || V.stage.start)(L.stages[e.id] || e.id, e.note);
-    if (e.k === 'ticket') return (V.ticket[e.act] || V.ticket.start)(e.ids || [], e.act === 'done' ? e.tests : e.note);
-    if (e.k === 'gate') return (V.gate[e.g] || (() => e.g))(e.ok, e);
-    if (e.k === 'add') return (V.add[e.key] || (n => `${e.key}: +${n}`))(e.n || 1);
-    if (e.k === 'tickets') return V.tickets(e.n || 0);
-    if (e.k === 'tests') return V.tests(e);
-    if (e.k === 'ask') return V.ask(e);
-    return typeof V[e.k] === 'string' ? V[e.k] : null;
-  };
-  const evTone = e => e.k === 'finish' ? ['f-done','flag'] : e.k === 'ask' ? ['f-now','msg'] : e.k === 'answered' ? ['','msg']
-    : e.k === 'gate' ? (e.ok ? ['f-done','shield'] : ['f-now','alert'])
-    : e.k === 'ticket' ? ({done:['f-done','check'], review:['f-rev','clock'], repair:['f-fix','rotate'], fail:['f-bad','x']}[e.act] || ['','play'])
-    : e.k === 'stage' ? ({done:['f-done','check'], fail:['f-bad','x'], skip:['','chev']}[e.act] || ['','play'])
-    : e.k === 'tests' ? [e.failed ? 'f-bad' : 'f-done', e.failed ? 'x' : 'check'] : e.k === 'add' ? ['','plus'] : ['','list'];
-  const feedRows = (S.log || []).filter(e => e.k !== 'tier').slice(-12).reverse().map(e => {
-    const text = evText(e);
-    if (!text) return '';
-    const [cls, icon] = evTone(e);
-    return `<div class="ev"><span class="ei ${cls}">${ic(icon,'xs')}</span><span>${esc(text)}</span>${
-      fin ? `<em>${hhmm(e.t)}</em>` : `<em data-ago-short="${esc(e.t)}">${agoShort(e.t)}</em>`}</div>`;
+  // Лента этапов — она же ответ на «где мы сейчас», когда тасков нет вовсе.
+  const stageRows = stages.map(s => {
+    const dur = s.status === 'skipped' ? L.skipped
+      : s.startedAt ? timerHTML(s.startedAt, s.finishedAt)
+      : `<span class="empty">${L.notStarted}</span>`;
+    return `<div class="st ${esc(s.status || 'pending')}">
+      <div class="rail"><i></i></div>
+      <div><div class="nm">${esc(stName(s))}</div>${s.note ? `<div class="sub">${esc(s.note)}</div>` : ''}</div>
+      <div class="mins">${dur}</div></div>`;
   }).join('');
-  const feedCard = feedRows ? `<section class="card w"><div class="whead"><h3 class="wt">${L.feed}</h3>${fin ? '' :
-    `<span data-ago="${esc(S.updatedAt || '')}">${S.updatedAt ? agoText(S.updatedAt) : ''}</span>`}</div>${feedRows}</section>` : '';
 
-  // ——— раскладка ———
-  // Слева — длинное (слова, ход сборки в отчёте), справа — короткое; «Понадобится»
-  // слева под словами, иначе правая колонка уходит вниз, а левая стоит пустой.
-  const leftCol = fin ? [needCard, blindCard, buildCard, wordsCard] : [wordsCard, needCard];
-  const rightCol = fin ? [gatesCard, reportCard, asmCard, concernsCard, addCard, feedCard]
-                    : [gatesCard, feedCard, reportCard, concernsCard, addCard];
-  const when = S.startedAt ? (fin
-    ? L.startedRange(new Date(S.startedAt).toLocaleString(L.lang === 'en' ? 'en-GB' : 'ru-RU', {day:'numeric', month:'long', hour:'2-digit', minute:'2-digit'}), hhmm(S.finishedAt))
-    : L.started(new Date(S.startedAt).toDateString() === new Date().toDateString()
-        ? `${L.today} ${hhmm(S.startedAt)}`
-        : new Date(S.startedAt).toLocaleString(L.lang === 'en' ? 'en-GB' : 'ru-RU', {day:'numeric', month:'long', hour:'2-digit', minute:'2-digit'}))) : '';
+  const list = arr => arr && arr.length
+    ? '<ul class="debt">' + arr.map(x => `<li>${esc(x)}</li>`).join('') + '</ul>'
+    : `<div class="empty">${L.none}</div>`;
+
+  // Требование выполнено, когда готовы все таски, где оно названо (issue #6).
+  const reqState = {};
+  T.forEach(t => (t.requirements||[]).forEach(r => {
+    const x = reqState[r] || (reqState[r] = {n: 0, d: 0});
+    x.n++; if (t.status === 'done') x.d++;
+  }));
+  Object.keys(reqState).forEach(r => {
+    const x = reqState[r];
+    reqState[r] = x.d === 0 ? '' : x.d === x.n ? 'ok' : 'part';
+  });
+  const rows = T.map(t => `<tr>
+    <td><b>${esc(t.id)}</b></td>
+    <td><span class="dot" style="background:${statusColor(t.status)}"></span>${esc(t.title)}
+      ${t.concerns?.length ? `<div class="sub">${esc(t.concerns.join('; '))}</div>` : ''}</td>
+    <td>${(t.requirements||[]).map(r => {
+      const st = reqState[r];
+      return `<span class="tag${st ? ' ' + st : ''}"${st ? ` title="${st === 'ok' ? L.reqOk : L.reqPart}"` : ''}>${esc(r)}</span>`;
+    }).join('') || '<span class="empty">—</span>'}</td>
+    <td class="mins">${t.startedAt ? timerHTML(t.startedAt, t.finishedAt) : '—'}</td>
+    <td class="mins">${t.retries ? t.retries : ''}${
+      t.repairs ? `<span style="color:var(--fix)"> +${t.repairs}</span>` : ''}</td>
+    <td class="mins">${t.tests ? (t.tests.failed ? `<span style="color:var(--bad)">${t.tests.failed} ✗</span>` : t.tests.passed + ' ✓') : '—'}</td>
+    <td class="mins">${t.commit ? `<code>${esc(t.commit).slice(0,7)}</code>` : '—'}</td>
+  </tr>`).join('');
+
+  // Ярус T0: тасков нет по замыслу — вместо пустой таблицы показываем сам заход.
+  const sp = S.singlePass || null;
+  const t0block = `<div class="note"><b>${L.t0note(sp?.files?.length ? L.t0files(sp.files.length) : '')}</b>
+    <div class="sub" style="margin-top:6px">
+      ${sp?.startedAt ? `${L.thTime}: ${timerHTML(sp.startedAt, sp.finishedAt)} · ` : ''}
+      ${sp?.tests ? `${L.thTests}: ${sp.tests.failed ? `<span style="color:var(--bad)">${sp.tests.failed} ✗</span>` : sp.tests.passed + ' ✓'} · ` : ''}
+      ${sp?.commit ? `${L.thCommit}: <code>${esc(sp.commit).slice(0,7)}</code>` : ''}
+    </div></div>`;
+  const worklog = T.length
+    ? `<h2>${L.progress}</h2><div class="tl">${tlSum}${tlNow}${timeline}</div>
+       <h2>${L.tblTickets}</h2>
+       <div class="scroll"><table>
+         <thead><tr><th>${L.thN}</th><th>${L.thTitle}</th><th>${L.thReq}</th><th>${L.thTime}</th>
+           <th>${L.thRetry}</th><th>${L.thTests}</th><th>${L.thCommit}</th></tr></thead>
+         <tbody>${rows}</tbody>
+       </table></div>`
+    : (t0 || sp) ? `<h2>${L.stages.build}</h2>${t0block}` : '';
+
+  const blind = S.blind ? `<h2>${L.blind}</h2><div class="card">
+      <div class="v">${L.blindV(esc(S.blind.matched), esc(S.blind.checked))}</div>
+      ${S.blind.mismatches?.length ? `<div class="sub">${L.blindBad}</div>${list(S.blind.mismatches)}`
+        : `<div class="sub">${L.blindOk}</div>`}</div>` : '';
 
   document.documentElement.lang = L.lang;
-  const app = document.getElementById('app');
-  app.innerHTML = `
-  <header class="top">
-    <img class="logo" src="${LOGO}" alt="autopilot">
-    <div class="tools">
-      ${fin ? '' : `<button type="button" class="iconbtn" data-refresh title="${L.refresh}" aria-label="${L.refresh}">${ic('sync')}</button>`}
-      <div class="tabs" role="group" aria-label="${L.themeLabel}">
-        <button type="button" data-theme="light" title="${L.themeLight}" aria-label="${L.themeLight}" aria-pressed="${effectiveTheme()==='light'}">${ic('sun')}</button>
-        <button type="button" data-theme="dark" title="${L.themeDark}" aria-label="${L.themeDark}" aria-pressed="${effectiveTheme()==='dark'}">${ic('moon')}</button>
+  document.getElementById('app').innerHTML = `
+  <div class="top">
+    <img class="logo l" src="${LOGO_LIGHT}" alt="autopilot">
+    <img class="logo d" src="${LOGO_DARK}" alt="autopilot">
+    <div class="segs">
+      ${S.finishedAt ? '' : `<div class="seg">
+        <button type="button" data-refresh title="${L.refresh}" aria-label="${L.refresh}">${SYNC}</button>
+      </div>`}
+      <div class="seg" role="group" aria-label="${L.themeLabel}">
+        <button type="button" data-theme="light" title="${L.themeLight}" aria-label="${L.themeLight}"
+          aria-pressed="${effectiveTheme()==='light'}">${SUN}</button>
+        <button type="button" data-theme="dark" title="${L.themeDark}" aria-label="${L.themeDark}"
+          aria-pressed="${effectiveTheme()==='dark'}">${MOON}</button>
       </div>
-      <div class="tabs" role="group" aria-label="${L.langLabel}">
+      <div class="seg" role="group" aria-label="${L.langLabel}">
         <button type="button" data-lang="ru" aria-pressed="${L.lang==='ru'}">RU</button>
         <button type="button" data-lang="en" aria-pressed="${L.lang==='en'}">EN</button>
       </div>
     </div>
-  </header>
-  <div class="title">
-    <h1>${esc(S.title)}</h1>
-    <div class="meta">${S.mode ? `<span class="tag">${esc(L.modes[S.mode] || S.mode)}</span>` : ''}${
-      S.depth ? `<span class="tag">${esc(L.depths[S.depth] || S.depth)}</span>` : ''}<span class="when">${when}</span></div>
   </div>
-  ${hero}
-  <div class="tiles">${tileReq}${tileTk}${tileTests}${tile4}</div>
-  ${fin ? '' : buildCard}
-  <div class="cols"><div class="col">${leftCol.join('')}</div><div class="col">${rightCol.join('')}</div></div>
+
+  <header>
+    <h1>${esc(S.title)}</h1>
+    <div class="badges">
+      <span class="badge ${MODE_CLS[S.mode]||''}">${esc(L.modes[S.mode] || S.mode)}</span>
+      <span class="badge ${DEPTH_CLS[S.depth]||''}">${esc(L.depths[S.depth] || S.depth || '')}</span>
+      <span class="badge ${TIER_CLS[String(S.tier).toUpperCase()]||''}">${L.tier(esc(S.tier))}</span>
+      ${S.finishedAt ? `<span class="badge b-done">${L.finished}</span>` : ''}
+    </div>
+  </header>
+
+  <div class="overall">
+    <div class="overall-head"><span>${L.overall}</span><b>${overallPct}<small>%</small></b></div>
+    <div class="bar lg"><i style="width:${overallPct}%"></i></div>
+    <div class="sub">${L.overallStages(stagesDone, stages.length)}${
+      T.length ? ' · ' + L.overallTickets(done.length, T.length) : ''}</div>
+  </div>
+
+  <div class="grid m">
+    <div class="card"><div class="k">${L.coverage}</div>
+      <div class="hero">${ring(coverage)}
+        <div><div class="v">${coverage}<small>%</small></div>
+        <div class="sub">${L.ofReq(R.done||0, live)}</div></div></div>
+    </div>
+    <div class="card"><div class="k">${L.stage}</div>
+      <div class="v stage">${esc(curStage ? stName(curStage) : L.allDone)}</div>
+      <div class="sub">${L.stageOf(stageNo, stages.length)}${
+        activeStage?.startedAt ? ' · ' + timerHTML(activeStage.startedAt, null) : ''}</div>
+    </div>
+    <div class="card"><div class="k">${L.elapsed}</div>
+      <div class="v">${S.startedAt ? timerHTML(S.startedAt, S.finishedAt) : '—'}</div>
+      <div class="sub">${S.startedAt ? L.calendar(fmtClock(spanMs(S.startedAt, S.finishedAt))) + ' · ' : ''}${
+        median ? L.median(median) : (buildMs != null ? L.buildTook(fmtClock(buildMs)) : L.tooEarly)}</div>
+      <div class="sub stale" data-idle-note hidden>${L.paused}</div>
+    </div>
+    <div class="card"><div class="k">${L.left}</div>
+      <div class="v">${eta ? fmtDur(eta[0]) : '—'}${eta ? `<small> … ${fmtDur(eta[1])}</small>` : ''}</div>
+      <div class="sub">${eta ? L.critpath(cp)
+        : (t0 ? L.noEta : (T.length && done.length === T.length ? L.wrapUp : L.needTwo))}</div>
+    </div>
+  </div>
+
+  <div class="grid m">
+    <div class="card"><div class="k">${L.tickets}</div>
+      <div class="v">${T.length ? `${done.length}<small> / ${T.length}</small>`
+        : t0 ? `<span style="font-size:22px">${L.noTicketsTier}</span>` : '—'}</div>
+      ${T.length ? `<div class="bar"><i style="width:${ticketPct}%"></i></div>
+      <div class="sub">${L.ticketsDone(ticketPct)}${writing.length ? ' · ' + L.chipRun(writing.length) : ''}${
+        inReview.length ? ' · ' + L.chipReview(inReview.length) : ''}${
+        inRepair.length ? ' · ' + L.chipRepair(inRepair.length) : ''}${
+        retries ? L.retries(retries) : ''}</div>`
+        : `<div class="sub">${t0 ? L.tier(esc(S.tier)) : L.notCut}</div>`}
+    </div>
+    <div class="card"><div class="k">${L.debt}</div>
+      <div class="v">${debtN}</div>
+      <div class="sub">${L.debtSub(S.debt?.placeholders?.length||0, S.debt?.assumptions?.length||0, S.debt?.emptyEnv?.length||0)}</div>
+    </div>
+    <div class="card"><div class="k">${L.tests}</div>
+      <div class="v">${tests ? tests.passed : '—'}${tests && tests.failed ? `<small style="color:var(--bad)"> · ${L.failed(tests.failed)}</small>` : ''}</div>
+      <div class="sub">${T.length ? L.testsSub : L.testsSubOne}</div>
+    </div>
+    <div class="card"><div class="k">${L.reqs}</div>
+      <div class="v">${R.total||0}</div>
+      <div class="sub">${L.reqsSub(R.dropped||0, R.deferred||0, R.placeholder||0)}</div>
+    </div>
+  </div>
+
+  <h2>${L.stagesTitle}</h2>
+  <div class="stages">${stageRows}</div>
+
+  ${worklog}
+
+  <h2>${L.toClose}</h2>
+  <div class="grid">
+    <div class="card"><div class="k">${L.placeholders}</div>${list(S.debt?.placeholders)}</div>
+    <div class="card"><div class="k">${L.assumptions}</div>${list(S.debt?.assumptions)}</div>
+    <div class="card"><div class="k">${L.envVars}</div>${list(S.debt?.emptyEnv)}</div>
+    ${S.additions?.length ? `<div class="card"><div class="k">${L.additions}</div>${list(S.additions)}</div>` : ''}
+  </div>
+
+  ${blind}
+
   <footer>
+    <span>${L.updated}: <span data-ago="${esc(S.updatedAt || '')}"
+      title="${S.updatedAt ? esc(new Date(S.updatedAt).toLocaleString(L.lang==='en'?'en-GB':'ru-RU')) : ''}"
+      >${S.updatedAt ? agoText(S.updatedAt) : '—'}</span></span>
     <span>${L.filesIn} <code>.autopilot/${esc(S.dir || S.slug)}/</code></span>
-    <span>${fin ? L.frozen : `${L.updated}: <span data-ago="${esc(S.updatedAt || '')}"
-      title="${S.updatedAt ? esc(new Date(S.updatedAt).toLocaleString(L.lang==='en'?'en-GB':'ru-RU')) : ''}">${S.updatedAt ? agoText(S.updatedAt) : '—'}</span>`}</span>
   </footer>`;
 
-  // Вкладка подписана проектом: когда репозиторий дорабатывают второй раз, это
-  // единственное место, где видно, что на экране прошлый прогон. Пока сборка ждёт
-  // человека, вкладка говорит об этом — её видно, даже когда дашборд в фоне.
-  document.title = (waiting ? L.tabWait + ' — ' : '') + (S.title ? `${S.title} — autopilot` : 'autopilot');
+  // Вкладка и карточка предпросмотра подписаны проектом, а не словом «autopilot»:
+  // когда репозиторий дорабатывают второй раз, это единственное место, где с одного
+  // взгляда видно, что на экране прошлый прогон, а не начавшийся.
+  document.title = S.title ? `${S.title} — autopilot` : 'autopilot';
 
-  if (!booted) {
-    booted = true;
-    app.classList.add('boot');
-    setTimeout(() => app.classList.remove('boot'), 1400);
-  }
+  document.querySelectorAll('.seg button[data-lang]').forEach(b =>
+    b.addEventListener('click', () => {
+      try { localStorage.setItem('autopilot-lang', b.dataset.lang); } catch(e) {}
+      render(b.dataset.lang);
+    }));
+
+  document.querySelectorAll('.seg button[data-theme]').forEach(b =>
+    b.addEventListener('click', () => {
+      const t = b.dataset.theme;
+      try { localStorage.setItem('autopilot-theme', t); } catch(e) {}
+      applyTheme(t);
+      document.querySelectorAll('.seg button[data-theme]').forEach(x =>
+        x.setAttribute('aria-pressed', String(x.dataset.theme === t)));
+    }));
+
+  document.querySelectorAll('.seg button[data-refresh]').forEach(b =>
+    b.addEventListener('click', () => refreshNow(b)));
+
   tick();
   showLink();
   if (!pulling) pollState();
 }
-
-// Один обработчик на всё: #app переписывается целиком на каждом событии сборки.
-document.getElementById('app').addEventListener('click', e => {
-  const b = e.target.closest('button');
-  if (!b) return;
-  if (b.dataset.lang) {
-    try { localStorage.setItem('autopilot-lang', b.dataset.lang); } catch(err) {}
-    render(b.dataset.lang);
-  } else if (b.dataset.theme) {
-    const t = b.dataset.theme;
-    try { localStorage.setItem('autopilot-theme', t); } catch(err) {}
-    applyTheme(t);
-    document.querySelectorAll('button[data-theme]').forEach(x => x.setAttribute('aria-pressed', String(x.dataset.theme === t)));
-  } else if (b.hasAttribute('data-refresh')) {
-    refreshNow(b);
-  } else if (b.dataset.filter) {
-    UI.filter = b.dataset.filter; UI.open.words = false; render(CUR.lang);
-  } else if (b.dataset.more) {
-    UI.open[b.dataset.more] = !UI.open[b.dataset.more]; render(CUR.lang);
-  }
-});
 
 let savedLang = 'ru';
 try { savedLang = localStorage.getItem('autopilot-lang')
@@ -1248,26 +970,34 @@ try { savedLang = localStorage.getItem('autopilot-lang')
 
 applyTheme(storedTheme());
 
-// Пустой экран не говорит, что сломалось, поэтому страница объясняет — и не
-// сдаётся: опрос продолжается, и когда файл появится, дашборд оживёт сам.
+// Состояние приходит из снимка в самой странице, а поверх — из state.js рядом.
+// Пустой экран не говорит, что сломалось,
+// поэтому страница объясняет — и, в отличие от прежней версии, не сдаётся:
+// опрос продолжается, и когда файл появится, дашборд оживёт сам.
 function bootFail(why){
   const app = document.getElementById('app');
   if (!app) return;
-  const L = I18N[(navigator.language || '').startsWith('ru') ? 'ru' : 'en'];
-  app.innerHTML = `<header class="top"><img class="logo" src="${LOGO}" alt="autopilot"></header>
-    <section class="card"><h3 class="wt">${L.boot}</h3><p class="muted" style="margin-top:10px">${why}</p>
-    <p class="muted" style="margin-top:10px">${L.bootHelp}</p></section>`;
+  const ru = (navigator.language || '').startsWith('ru');
+  app.innerHTML = '<div class="card"><div class="k">' +
+    (ru ? 'Дашборд ещё не прочитал состояние' : 'Dashboard has no state yet') +
+    '</div><div class="sub" style="margin-top:10px">' + why + '</div>' +
+    '<div class="sub" style="margin-top:10px">' + (ru
+      ? 'Страница проверяет файл каждые десять секунд и покажет данные, как только он появится. Если сборка идёт давно, скажи агенту «обнови состояние». Саму сборку это не затрагивает.'
+      : 'The page rechecks the file every ten seconds and will render as soon as it appears. If the build has been running a while, ask the agent to write the state. The build itself is unaffected.') +
+    '</div></div>';
 }
 
 if (typeof STATE === 'undefined' || !STATE || typeof STATE !== 'object') {
-  bootFail(I18N[(navigator.language || '').startsWith('ru') ? 'ru' : 'en'].bootWhy);
+  bootFail((navigator.language || '').startsWith('ru')
+    ? 'Состояния нет ни внутри страницы, ни в файле <code>.autopilot/state.js</code> рядом: прогон только начался, либо файл помялся.'
+    : 'No state either inside the page or in <code>.autopilot/state.js</code> beside it: the run has just started, or the file got mangled.');
   pollState();
 } else {
   try {
     render(I18N[savedLang] ? savedLang : 'ru');
     lastStamp = stampOf(STATE);
   } catch (e) {
-    bootFail(esc(String(e && e.message || e)));
+    bootFail(String(e && e.message || e));
     pollState();
   }
 }
@@ -1284,7 +1014,7 @@ window.addEventListener('pageshow', e => { if (e.persisted) { tick(); refreshNow
 try {
   matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => {
     if (storedTheme()) return;
-    document.querySelectorAll('button[data-theme]').forEach(x =>
+    document.querySelectorAll('.seg button[data-theme]').forEach(x =>
       x.setAttribute('aria-pressed', String(x.dataset.theme === effectiveTheme())));
   });
 } catch(e) {}
