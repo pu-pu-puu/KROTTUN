@@ -24,3 +24,6 @@
 - [ ] И старт, и watchdog используют одну очередь сессии; исключённые не пробуются, после последовательных отказов exhaustion без циклов, защита остаётся.
 - [ ] Cancel/release/shutdown/generation существующего lifecycle сохранены; offline тесты initial start и watchdog с fake protection подтверждают маршрут кандидатов.
 - [ ] Полный suite зелёный; API settings не содержит credentials; существующее редактирование работает.
+
+## Зависимость из ревью 01
+Обязателен offline-тест: RUNNING edit резервного сервера меняет сохранённый объект, но watchdog использует прежние endpoint/auth из session snapshot до следующего ручного подключения.

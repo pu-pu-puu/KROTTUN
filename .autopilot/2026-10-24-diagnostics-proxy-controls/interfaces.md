@@ -21,3 +21,21 @@ Check IDs: proxy,dns,https,ip,system_proxy. States running/pass/fail/warning/ski
 
 ## UI
 Editing and reserves use modal dialogs and existing server list. Diagnostic button may be in existing home server-actions or info area without altering protection panel geometry. UI polling single-flight, bounded timeout, stops when dialog closes; handles exceptions and stale run IDs. No unsanitized innerHTML; use DOM textContent for all data. Password fields cleared on close and successful save. Keep inputs after validation/storage errors.
+
+## Реализовано таском 01
+- edit_proxy(proxy_id, host, port, protocol, username='', password=None, tag='', clear_password=False) returns success/busy/error and safe proxy dictionaries; tag exposed, password/raw_line withheld.
+- Single/batch async geo guards original object identity and hostname before publishing; replacement prevents old reply overwrite.
+- UI openEditModal(proxy_id) reuses add form with explicit edit mode; close clears password. 104 unittest tests pass, including isolated production-JS DOM test.
+- D02: Session snapshot fixes original numeric endpoints after initial resolution, before RUNNING, so edits invalidate future DNS cache without breaking old hostname reserve in active session.
+
+## Реализовано таском 02
+- get_fallbacks() -> {success,fallback_proxy_ids,proxies,applies_next_connection}; set_fallbacks(proxy_ids:list[str]) -> {success,fallback_proxy_ids?,busy?,error?}.
+- _snapshot_session(primary,generation), _remaining_session_candidates(), _finish_session_attempt(success): _session_candidates tuple of private ProxyItem copies, cursor advances past successful candidate; numeric hostname-bound endpoints frozen before RUNNING.
+- Manual request freezes candidates before background start; watchdog uses remaining suffix and never adds new/excluded/saved edits. Empty suffix invokes deny-only exhaustion. Five focused tests, full suite 109 pass.
+
+## Реализовано таском 03
+- Bridge: start_diagnostics(), get_diagnostics(), cancel_diagnostics(); service DiagnosticsService(valid, context_factory=None, binder=..., clock=...), start(context,mode,proxy=None,flag=None), snapshot(valid=True), cancel(), stop(timeout=1.25).
+- Snapshot {run_id,status,checks:[{id,label,status,detail}]} with five fixed IDs. Single spawn process gate opens after Job binding; valid context retains selected object identity, not numeric object id alone.
+- release waits for confirmed diagnostic exit before removing policy; unconfirmed exit rejects release and keeps policy. Orphan ownership retained and dead orphan reaped before future runs.
+- 119 unittest tests pass; node prototypes/proxy-controls/verify.cjs PASS with six 520x760 production screenshots, external requests aborted. Root visually checked edit-error, fallback-empty and diagnostics-results.
+- F1: protected proxy/tunnel check remains running until current HTTPS result, then follows pass/fail; healthy runtime alone no longer emits confirmed success. Regression added; full suite 120 pass.
