@@ -1,0 +1,16 @@
+<!doctype html><html lang="ru"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>KROTTUN — цвета журнала</title>
+<style>
+*{box-sizing:border-box}body{margin:0;padding:28px 32px;background:#080f22;color:#e7f0ff;font:15px/1.5 'Segoe UI',sans-serif}header,main,footer{max-width:1612px;margin:auto}h1{font-size:26px;font-weight:600;margin:0 0 10px}header p{margin:0 0 14px;color:#b1c6e3;max-width:970px}button{font:inherit;background:#142742;color:#e0eeff;border:1px solid #4b6d97;border-radius:7px;padding:7px 13px;cursor:pointer}button:hover{background:#243c5a}button:focus-visible{outline:2px solid #a8dcff;outline-offset:3px}.gallery{display:grid;grid-template-columns:repeat(3,minmax(0,520px));gap:26px;margin-top:24px}h2{font-size:19px;font-weight:600;margin:0 0 6px}.description{font-size:13px;color:#b1c6e3;min-height:42px;margin:0 0 16px}.window-title{background:#edf2fa;color:#223047;padding:5px 10px;font:12px 'Segoe UI',sans-serif;border-radius:7px 7px 0 0}.screen{width:100%;aspect-ratio:520/760;overflow:hidden;border-radius:0 0 12px 12px;outline:1px solid #345079}iframe{display:block;width:520px;height:760px;transform-origin:top left;border:0}footer{font-size:13px;color:#b1c6e3;margin-top:20px}header small{display:block;margin-top:12px;color:#adc3e0}@media(max-width:1100px){.gallery{grid-template-columns:repeat(2,minmax(0,520px))}}@media(max-width:650px){body{padding:20px 16px}.gallery{grid-template-columns:minmax(0,520px)}h1{font-size:23px}.description{min-height:0}}
+</style>
+<header><h1>Журнал в цветах KROTTUN</h1><p>Наверху остались заголовок и короткий статус. Длинное пояснение открывается по «О журнале». В каждом варианте работают фильтр, выбор строки, пауза и очистка.</p><button id="reset">Вернуть пример записей</button><small>Три визуальных прототипа · данные демонстрационные · рабочее приложение не изменено</small></header>
+<main class="gallery">
+<section><h2>1. Синий лёд</h2><p class="description">Тёмно-синий терминал, ледяные адреса, мягкие синие разделители.</p><div class="window-title">KROTTUN — v2.5.0</div><div class="screen"><iframe src="variant-1.html" title="Синий лёд"></iframe></div></section>
+<section><h2>2. Индиго</h2><p class="description">Чернильный фон и лавандовые акценты в тон тумблеру подключения.</p><div class="window-title">KROTTUN — v2.5.0</div><div class="screen"><iframe src="variant-2.html" title="Индиго"></iframe></div></section>
+<section><h2>3. Графит</h2><p class="description">Самый сдержанный: графитовый фон, светлый текст и приглушённый голубой.</p><div class="window-title">KROTTUN — v2.5.0</div><div class="screen"><iframe src="variant-3.html" title="Графит"></iframe></div></section>
+</main><footer>Рекомендую №1 — ближе всего к основному интерфейсу. Полные протокол, маршрут и статус доступны при прокрутке таблицы вправо; детали выбранной строки — внизу.</footer>
+<script>
+const frames=[...document.querySelectorAll('iframe')];
+function resize(){frames.forEach(f=>f.style.transform=`scale(${f.parentElement.clientWidth/520})`)}
+new ResizeObserver(resize).observe(document.querySelector('.gallery'));resize();
+document.getElementById('reset').onclick=()=>frames.forEach(f=>f.contentWindow.postMessage({type:'reset'},'*'));
+</script></html>

@@ -69,3 +69,6 @@ CODE_FOR_REVIEW.md
 ProxyTUN.spec
 .autopilot/serve.*
 .autopilot/runtime-diagnostics.json
+# Private desktop-video frames and host packet-capture output stay local.
+.autopilot/toggle-layout-video/
+.autopilot/host-capture-2026-10-24/

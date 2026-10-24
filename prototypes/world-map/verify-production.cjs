@@ -1,0 +1,34 @@
+// Render only the decorative script; application/network code is never executed.
+const {chromium}=require('C:/Users/010726Admin/.cache/codex-runtimes/codex-primary-runtime/dependencies/node/node_modules/playwright');
+const fs=require('fs');
+const path=require('path');
+const {execFileSync}=require('child_process');
+const {pathToFileURL}=require('url');
+(async()=>{
+  const root=path.resolve(__dirname,'../..');
+  const target=path.join(root,'gui/web/index.html');
+  const source=fs.readFileSync(target,'utf8');
+  const original=execFileSync('git',['show','HEAD:gui/web/index.html'],{cwd:root,encoding:'utf8'});
+  const mesh=s=>s.match(/body::before\s*\{[^}]+\}/)[0].replace(/\r\n/g,'\n');
+  if(mesh(source)!==mesh(original)) throw Error('Ambient mesh changed');
+  const matrix=s=>s.match(/<div class="world-map-layer"[^>]*>\s*(<svg[\s\S]*?<\/svg>)/)[1].replace(/\r\n/g,'\n');
+  if(matrix(source)!==matrix(original)) throw Error('Original dot matrix changed');
+  const clean=source.replace(/<script\b([^>]*)>[\s\S]*?<\/script>/gi,(all,attrs)=>attrs.includes('data-world-map')?all:'').replace(/\s+on\w+="[^"]*"/g,'');
+  const browser=await chromium.launch({headless:true,channel:'msedge'});
+  const page=await browser.newPage({viewport:{width:520,height:760}});
+  const errors=[]; page.on('pageerror',e=>errors.push(e.message));
+  await page.route('**/index.html',route=>route.fulfill({contentType:'text/html',body:clean}));
+  await page.goto(pathToFileURL(target).href);
+  await page.waitForTimeout(400);
+  const info=await page.evaluate(()=>({lights:document.querySelectorAll('.capital-light').length,halos:document.querySelectorAll('.capital-halo').length,animations:document.getAnimations().filter(a=>a.effect.target.closest('.world-map-layer')).length,mesh:getComputedStyle(document.body,'::before').backgroundSize,top:getComputedStyle(document.querySelector('.world-map-layer')).top}));
+  if(info.lights!==13||info.halos!==13||info.animations!==26||info.mesh!=='20px 20px'||info.top!=='165px')throw Error(JSON.stringify(info));
+  await page.screenshot({path:path.join(__dirname,'selected-production.png')});
+  await page.evaluate(()=>{Object.defineProperty(document,'hidden',{configurable:true,value:true});document.dispatchEvent(new Event('visibilitychange'))});
+  if(!await page.evaluate(()=>document.getAnimations().filter(a=>a.effect.target.closest('.world-map-layer')).every(a=>a.playState==='paused'))) throw Error('hidden pause failed');
+  await page.emulateMedia({reducedMotion:'reduce'});
+  if(await page.evaluate(()=>document.getAnimations().some(a=>a.effect.target.closest('.world-map-layer')))) throw Error('reduced motion failed');
+  if(errors.length)throw Error(errors.join('\n'));
+  console.log(JSON.stringify(info));
+  console.log('PASS: background mesh and original SVG unchanged; capital lights; hidden pause; reduced motion; no JS errors.');
+  await browser.close();
+})().catch(e=>{console.error(e);process.exitCode=1});

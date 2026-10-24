@@ -17,6 +17,7 @@ import webview
 from core.proxy_model import ProxyItem, parse_bulk_proxies
 from core.singbox_manager import SingBoxManager
 from core.paths import sys_exe
+from core.version import APP_VERSION
 from core.admin_utils import is_admin
 from core.ip_service import (
     get_current_system_ip,
@@ -886,7 +887,7 @@ def start_app():
     html_content = get_html_content()
 
     window = webview.create_window(
-        title="KROTTUN — L3 TUN Proxy Manager",
+        title=f"KROTTUN — v{APP_VERSION}",
         html=html_content,
         js_api=api,
         width=520,

@@ -1,0 +1,32 @@
+/* Prototype-only overrides. Keep the application UI and its geometry intact. */
+.world-map-layer {
+  top: 165px;
+  height: 350px;
+  opacity: 1;
+  mask-image: radial-gradient(ellipse 95% 90% at 50% 46%, #000 53%, transparent 100%);
+  -webkit-mask-image: radial-gradient(ellipse 95% 90% at 50% 46%, #000 53%, transparent 100%);
+}
+.world-map-layer svg { filter: none; overflow: visible; }
+.world-map-layer svg > path { fill: #74baff; opacity: .57; }
+.capital { fill: #d9f6ff; }
+.halo { fill: #65d9ff; opacity: .16; }
+.ripple { fill: none; stroke: #a1eaff; stroke-width: 1.5; }
+body.focus .app-content { opacity: 0; pointer-events: none; }
+body.focus .world-map-layer { top: 165px; }
+body.paused svg * { animation-play-state: paused !important; }
+body[data-variant="1"] .capital { animation: beacon 5.5s ease-in-out infinite; animation-delay: var(--delay); }
+body[data-variant="1"] .halo { animation: breath 5.5s ease-in-out infinite; animation-delay: var(--delay); }
+body[data-variant="2"] .capital { animation: beacon 6s ease-in-out infinite; animation-delay: var(--delay); }
+body[data-variant="2"] .ripple { transform-box: fill-box; transform-origin: center; animation: ripple 6s ease-out infinite; animation-delay: var(--delay); }
+body[data-variant="3"] .cluster { animation: cluster 7s ease-in-out infinite; animation-delay: var(--delay); fill: #a9dfff; }
+body[data-variant="3"] .capital { animation: beacon 7s ease-in-out infinite; animation-delay: var(--delay); }
+@keyframes beacon { 0%, 12%, 62%, 100% { opacity: .16; } 28%, 36% { opacity: 1; } }
+@keyframes breath { 0%, 12%, 62%, 100% { opacity: 0; } 28%, 36% { opacity: .3; } }
+@keyframes ripple { 0%, 15% { opacity: 0; transform: scale(.2); } 22% { opacity: .8; } 50%, 100% { opacity: 0; transform: scale(3.5); } }
+@keyframes cluster { 0%, 8%, 65%, 100% { opacity: 0; } 28%, 38% { opacity: .95; } }
+@media (prefers-reduced-motion: reduce) {
+  .world-map-layer svg * { animation: none !important; }
+  .capital { opacity: .8; }
+  .cluster { opacity: .35; }
+  .ripple { display: none; }
+}

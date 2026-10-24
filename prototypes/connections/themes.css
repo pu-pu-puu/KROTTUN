@@ -1,0 +1,38 @@
+/* Every palette is scoped to the log component and its short explanatory header. */
+body{--log-bg:#07182e;--log-surface:#0d223d;--log-line:#315579;--log-text:#d9eaff;--log-muted:#a0b9d4;--log-accent:#8bd8ff;--log-select:#173958;--log-hover:#102c47}
+body[data-theme="2"]{--log-bg:#10152e;--log-surface:#191f40;--log-line:#4c527d;--log-text:#e8e7ff;--log-muted:#b2b5d6;--log-accent:#c4b4ff;--log-select:#30305b;--log-hover:#232747}
+body[data-theme="3"]{--log-bg:#111a25;--log-surface:#1a2635;--log-line:#445366;--log-text:#e0e8f2;--log-muted:#afbdcd;--log-accent:#a8cdf9;--log-select:#263a50;--log-hover:#203042}
+#viewConnections{min-height:0;overflow:visible;padding-right:0}
+.journal-heading{display:flex;align-items:center;justify-content:space-between;gap:12px;margin:0 0 13px;flex-shrink:0;position:relative}
+.journal-heading h2{font-size:20px;line-height:1.25;font-weight:600;margin:0 0 5px}
+#connectionSource{font-size:11px;line-height:1.4;color:#b2cef1}
+.journal-help{font-size:11px;flex-shrink:0}
+.journal-help summary{color:#c9e3ff;border:1px solid #5478a4;border-radius:6px;padding:6px 9px;cursor:pointer;list-style:none}
+.journal-help summary::after{content:' +';color:#9bc9fa}
+.journal-help[open] summary::after{content:' −'}
+.journal-help>div{position:absolute;right:0;top:100%;width:min(355px,100%);z-index:20;padding:14px;background:#0a1d3b;border:1px solid #5478a4;border-radius:8px;color:#d8e9ff;box-shadow:0 12px 28px #0008;line-height:1.6;font-size:12px}
+.journal-help p{margin:7px 0 0}.journal-help summary:focus-visible{outline:2px solid #a5dcff;outline-offset:3px}
+#terminalLogPane{background:var(--log-bg);border-color:var(--log-line);color:var(--log-text);padding:9px;max-height:none;min-height:260px;overflow:hidden}
+#terminalLogPane .terminal-toolbar{gap:7px;padding:0 0 10px}
+#terminalLogPane input{background:var(--log-surface);color:var(--log-text);border-color:var(--log-line);font-size:11px;padding:8px}
+#terminalLogPane input::placeholder{color:var(--log-muted);opacity:1}
+#terminalLogPane button{background:var(--log-surface);color:var(--log-accent);border-color:var(--log-line);font-size:11px;padding:8px 10px;display:inline-flex;align-items:center;justify-content:center;gap:5px}
+#terminalLogPane button:hover{background:var(--log-hover)}
+#terminalLogPane button:focus-visible,#terminalLogPane input:focus-visible,#terminalLogPane tr:focus-visible{outline-color:var(--log-accent)}
+#terminalLogPane button[aria-pressed="true"]{background:var(--log-select);border-color:var(--log-accent)}
+#terminalLogPane .terminal-table-scroll{scrollbar-color:var(--log-line) var(--log-bg)}
+#terminalLogPane .terminal-table{width:750px;min-width:750px;table-layout:fixed;font-size:11px}
+#terminalLogPane th{background:var(--log-surface);color:var(--log-muted);border-color:var(--log-line);font-size:10px;padding:9px 6px}
+#terminalLogPane td{padding:10px 6px;border-right-color:var(--log-line);border-bottom:1px solid color-mix(in srgb,var(--log-line) 35%,transparent)}
+#terminalLogPane tr:hover{background:var(--log-hover);cursor:pointer}
+#terminalLogPane tr.selected{background:var(--log-select)}
+#terminalLogPane .connection-domain,#terminalLogPane .connection-marker,#terminalLogPane .connection-protocol{color:var(--log-accent)}
+#terminalLogPane small,#terminalLogPane .connection-status,#terminalLogPane .terminal-footer,#terminalLogPane #connectionEmpty{color:var(--log-muted)}
+#terminalLogPane .terminal-inspector{border-top-color:var(--log-line);font-size:11px;padding:10px 2px 2px}
+#terminalLogPane .terminal-inspector span{color:var(--log-muted)}
+#terminalLogPane #connectionInspectorHost{color:var(--log-accent)}
+#terminalLogPane #connectionInspectorDetails{color:var(--log-text);font-size:10px}
+#terminalLogPane .terminal-footer{font-size:10px;margin-top:8px;gap:4px}
+#terminalLogPane .ui-icon{color:currentColor;width:13px;height:13px}
+#terminalLogPane ::-webkit-scrollbar-thumb{background:var(--log-line)}
+#terminalLogPane ::-webkit-scrollbar-track{background:var(--log-bg)}

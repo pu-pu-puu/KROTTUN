@@ -14,7 +14,7 @@ class TerminalLogsTests(unittest.TestCase):
             def handle_starttag(self,tag,attrs):
                 identifier=dict(attrs).get('id')
                 if identifier:self.parents[identifier]=list(self.stack)
-                if tag not in ('input','img','meta','link','br','hr'):self.stack.append(identifier)
+                if tag not in ('input','img','meta','link','br','hr','col'):self.stack.append(identifier)
             def handle_endtag(self,tag):
                 if self.stack:self.stack.pop()
         html=(ROOT/'gui/web/index.html').read_text(encoding='utf-8')

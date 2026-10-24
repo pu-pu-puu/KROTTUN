@@ -21,3 +21,8 @@ Tunnel probes use one killable spawn worker with a job-bound request gate; retai
 Protected IP refresh uses trust_env=False and a four-second UI deadline with stale-result checks; do not reintroduce unarmed-only refresh or inherited Windows proxy settings. Sniff precedes DNS routing; observed hostname enrichments update existing journal rows without destination override.
 Live UiCheck verified protected IP and TLS example.com domain; Windows ProxyEnable remains on and must be treated as a potential browser-side conflict, never silently rewritten. Corrected local build: dist/fixed/KROTTUN.exe; see .autopilot/user-ip-domain-fix.md.
 <!-- autopilot:end -->
+
+## Git identity
+- All new commits and GitHub publications must use `pu-pu-puu`.
+- Git author/committer: `pu-pu-puu <282508417+pu-pu-puu@users.noreply.github.com>`.
+- Before committing or publishing, verify the effective identity. Never use `ui-ux-promax` or another account.

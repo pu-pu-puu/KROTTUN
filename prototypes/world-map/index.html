@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="ru">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>KROTTUN — варианты фоновой карты</title>
+<style>
+*{box-sizing:border-box}body{margin:0;background:#080f22;color:#e8f1ff;font:15px/1.5 'Segoe UI',sans-serif;padding:28px 32px 40px}header{max-width:1632px;margin:auto auto 22px}h1{font-size:26px;line-height:1.25;margin:0 0 9px;font-weight:600}p{color:#a8bfdf;margin:0 0 14px;max-width:900px}.controls{display:flex;gap:10px;flex-wrap:wrap}button,a{font:inherit}button{border:1px solid #456489;background:#152642;color:#e0eeff;padding:8px 14px;border-radius:8px;cursor:pointer}button:hover{background:#213c61}button:focus-visible,a:focus-visible{outline:2px solid #95dcff;outline-offset:4px}.gallery{display:grid;grid-template-columns:repeat(3,minmax(0,520px));gap:26px;max-width:1612px;margin:auto}h2{font-size:19px;margin:0 0 6px;font-weight:600}.description{min-height:48px;font-size:13px;max-width:440px}.screen{width:100%;aspect-ratio:520/760;overflow:hidden;border-radius:14px;outline:1px solid #2d4a75;position:relative;background:#031c77}iframe{display:block;width:520px;height:760px;border:0;transform-origin:top left}footer{max-width:1612px;margin:22px auto 0;color:#a8bfdf;font-size:13px}a{color:#b3dcff}header small{display:block;color:#a8bfdf;margin-top:12px}@media(max-width:1050px){.gallery{grid-template-columns:repeat(2,minmax(0,520px))}}@media(max-width:650px){body{padding:20px 16px}.gallery{grid-template-columns:minmax(0,520px);gap:30px}h1{font-size:23px}.description{min-height:0}}
+</style>
+<header>
+<h1>Три варианта живой карты</h1>
+<p>Карта опущена ниже панели защиты, точки ярче. Различается характер подсветки столиц. Интерфейс и его размеры сохранены.</p>
+<div class="controls"><button id="pause" aria-pressed="false">Приостановить анимацию</button><button id="focus" aria-pressed="false">Показать только карту</button></div>
+<small>Визуальные макеты · состояния подключения и IP демонстрационные · сетевые функции отключены</small>
+</header>
+<main class="gallery">
+<section><h2>1. Мягкое мерцание</h2><p class="description">Небольшие ледяные огни плавно загораются и гаснут. Самый спокойный вариант.</p><div class="screen"><iframe title="Мягкое мерцание столиц" src="preview.html?v=1"></iframe></div></section>
+<section><h2>2. Радиоимпульсы</h2><p class="description">От столиц расходятся тонкие световые кольца. Более заметный ритм.</p><div class="screen"><iframe title="Импульсы вокруг столиц" src="preview.html?v=2"></iframe></div></section>
+<section><h2>3. Световые островки</h2><p class="description">Вокруг столиц оживают группы точек самой карты. Мягкое пятно света без колец.</p><div class="screen"><iframe title="Подсветка групп точек" src="preview.html?v=3"></iframe></div></section>
+</main>
+<footer>Рекомендую №3: подсветка остаётся частью точечной карты. Для самого ненавязчивого фона — №1.</footer>
+<script>
+const frames = [...document.querySelectorAll('iframe')];
+function resize(){frames.forEach(f=>{f.style.transform=`scale(${f.parentElement.clientWidth/520})`})}
+new ResizeObserver(resize).observe(document.querySelector('.gallery'));resize();
+for(const [id,type,on,off] of [['pause','pause','Продолжить анимацию','Приостановить анимацию'],['focus','focus','Вернуть интерфейс','Показать только карту']]){
+  const btn=document.getElementById(id);btn.onclick=()=>{const value=btn.getAttribute('aria-pressed')!=='true';btn.setAttribute('aria-pressed',value);btn.textContent=value?on:off;frames.forEach(f=>f.contentWindow.postMessage({type,value},'*'))};
+}
+document.addEventListener('visibilitychange',()=>frames.forEach(f=>f.contentWindow.postMessage({type:'pause',value:document.hidden||document.getElementById('pause').getAttribute('aria-pressed')==='true'},'*')));
+</script>
+</html>
