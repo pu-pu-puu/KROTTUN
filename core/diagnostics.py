@@ -77,13 +77,14 @@ def perform_checks(mode, proxy, deadline, emit, session_factory=requests.Session
             url=f'{scheme}://{auth}{host}:{proxy.port}'
             session.proxies={'http':url,'https':url}
         for key in ('proxy','dns','https','ip'):
+            # Runtime health authorizes this route; current HTTPS confirms it.
+            if key=='proxy' and mode=='protected': continue
             try:
                 remaining()
                 value=None
                 if key=='proxy':
                     if mode=='proxy':
                         with connect((proxy.host,proxy.port),timeout=remaining()): pass
-                    # Protected mode is authorized only by existing runtime health.
                 elif key=='dns':
                     if mode=='proxy':
                         data=get_json(session,'https://cloudflare-dns.com/dns-query?name=example.com&type=A')
@@ -96,8 +97,10 @@ def perform_checks(mode, proxy, deadline, emit, session_factory=requests.Session
                 else:
                     value=str(ipaddress.ip_address(get_json(session,'https://api.ipify.org?format=json')['ip']))
                 emit((key,'pass',value))
+                if key=='https' and mode=='protected': emit(('proxy','pass',None))
             except Exception:
                 emit((key,'fail',None))
+                if key=='https' and mode=='protected': emit(('proxy','fail',None))
 
 
 def diagnostic_worker(sender, mode, proxy, deadline, gate):
@@ -199,7 +202,7 @@ class DiagnosticsService:
                         detail=DETAILS[status]
                         if status=='pass':
                             if key=='ip': detail=value
-                            elif key=='proxy': detail='TCP-соединение доступно; авторизацию проверяет HTTPS.' if mode=='proxy' else 'Ядро работает, существующая проверка туннеля успешна.'
+                            elif key=='proxy': detail='TCP-соединение доступно; авторизацию проверяет HTTPS.' if mode=='proxy' else 'Ядро работает, текущая HTTPS-проверка туннеля успешна.'
                             elif key=='dns': detail='Получен DNS-ответ через выбранный прокси (DoH); системный DNS не проверялся.' if mode=='proxy' else 'Системный getaddrinfo вернул адрес example.com через маршрутизацию TUN.'
                             elif key=='https': detail='Получен HTTPS-ответ через выбранный прокси.' if mode=='proxy' else 'Получен HTTPS-ответ через системную маршрутизацию TUN.'
                         row.update(status=status,detail=detail)

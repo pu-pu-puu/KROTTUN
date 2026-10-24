@@ -62,6 +62,29 @@ class DiagnosticsTests(unittest.TestCase):
             else:
                 resolve.assert_called_once(); connect.assert_not_called()
 
+    def test_healthy_runtime_does_not_confirm_tunnel_when_current_https_fails(self):
+        from core.diagnostics import perform_checks
+        api=self.bridge(); api._state=TunState.RUNNING
+        api._protection.state='protected'; api._sb.process=object()
+        api._sb.is_running.return_value=True; api._sb.proxy_reachable=True
+        _,mode,proxy=api._diagnostic_context()
+        self.assertEqual(mode,'protected')
+        session=MagicMock(); session.__enter__.return_value=session
+        emitted=[]; before_https=[]
+        def timeout(url, **kwargs):
+            if url=='https://example.com': before_https.extend(emitted)
+            raise TimeoutError()
+        session.get.side_effect=timeout
+        connect=MagicMock()
+        perform_checks(mode,proxy,100,emitted.append,lambda:session,
+                       Mock(return_value=[('address',)]),connect,lambda:0)
+        statuses={key:status for key,status,_ in emitted}
+        self.assertEqual(statuses['https'],'fail')
+        self.assertEqual(statuses['ip'],'fail')
+        self.assertEqual(statuses['proxy'],'fail')
+        self.assertFalse(any(key=='proxy' and status=='pass' for key,status,_ in before_https))
+        connect.assert_not_called()
+
     def test_bridge_context_rejects_selection_edit_delete_cancel_and_process_changes(self):
         for change in ('selection','edit','delete','cancel','process','generation','close','stop','release'):
             api=self.bridge(); context,mode,_=api._diagnostic_context()
