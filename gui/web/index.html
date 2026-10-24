@@ -950,6 +950,48 @@
       transform: translateX(-50%) translateY(0);
       opacity: 1;
     }
+
+    /* Terminal styling belongs only to the log-output component. */
+    #terminalLogPane { display:flex; flex-direction:column; flex:1; min-height:180px; max-height:350px; background:#000; color:#dce8de; border:1px dashed #78907e; padding:7px; font-family:Consolas,"Courier New",monospace; }
+    #terminalLogPane .terminal-toolbar { display:flex; gap:8px; padding:3px 0 10px; flex-shrink:0; }
+    #terminalLogPane input { min-width:0; flex:1; background:#000; color:#00e6ee; border:1px dashed #80f25a; padding:8px; font:12px Consolas,"Courier New",monospace; user-select:text; }
+    #terminalLogPane button { background:#000; color:#80f25a; border:1px dashed #78907e; border-radius:0; box-shadow:none; padding:8px; font:12px Consolas,"Courier New",monospace; white-space:nowrap; }
+    #terminalLogPane button:hover { background:#11200c; }
+    #terminalLogPane input:focus-visible, #terminalLogPane button:focus-visible { outline:2px solid #00e6ee; outline-offset:1px; }
+    #terminalLogPane .terminal-footer { display:flex; justify-content:space-between; gap:6px; flex-wrap:wrap; margin-top:7px; color:#91a49b; font-size:10px; }
+    #terminalLogPane .terminal-table-scroll { flex:1; min-height:80px; overflow:auto; scrollbar-color:#61755f #000; }
+    #terminalLogPane .terminal-table { width:100%; min-width:700px; border-collapse:collapse; text-align:left; font-size:12px; }
+    #terminalLogPane th { position:sticky; top:0; z-index:1; background:#000; color:#91aaa7; padding:9px 7px; font-weight:400; border-bottom:1px dashed #a8b9ad; white-space:nowrap; }
+    #terminalLogPane td { padding:8px 7px; border-right:1px solid #263c2b; white-space:nowrap; max-width:210px; overflow:hidden; text-overflow:ellipsis; }
+    #terminalLogPane tr.selected { background:#0c1d07; }
+    #terminalLogPane .connection-marker, #terminalLogPane .connection-protocol { color:#80f25a; }
+    #terminalLogPane .connection-domain { color:#00e6ee; font-weight:600; }
+    #terminalLogPane .connection-status { color:#91a49b; font-size:10px; }
+    #terminalLogPane small { display:block; margin-top:3px; color:#91a49b; font-size:10px; font-weight:400; }
+    #terminalLogPane #connectionEmpty { color:#91a49b; padding:18px 8px; font-size:12px; }
+    #terminalLogPane .terminal-inspector { flex-shrink:0; margin-top:7px; border-top:1px dashed #80f25a; padding:9px 3px 2px; overflow:auto; font-size:11px; line-height:1.6; white-space:nowrap; }
+    #terminalLogPane .terminal-inspector span { color:#80f25a; }
+    #terminalLogPane #connectionInspectorHost { color:#00e6ee; font-weight:400; user-select:text; }
+    #terminalLogPane #connectionInspectorDetails { color:#c8d8ce; user-select:text; }
+    #terminalLogPane tr:focus-visible { outline:2px solid #00e6ee; outline-offset:-2px; }
+
+    #protectionStrip { display:grid; grid-template-columns:minmax(0,1.25fr) minmax(0,1fr); flex-shrink:0; margin:7px 0 12px; border:1px solid #31568e; border-radius:12px; background:#041743; color:#e9f1ff; }
+    #protectionStrip .protection-summary { display:flex; align-items:center; gap:10px; padding:12px; min-width:0; }
+    #protectionStrip .protection-shield { width:25px; height:30px; color:#91c9f0; flex-shrink:0; }
+    #protectionStrip .protection-copy { min-width:0; font-size:12px; line-height:1.5; }
+    #protectionStrip strong { display:block; font-size:13px; font-weight:600; }
+    #protectionStrip .protection-state { display:flex; align-items:baseline; gap:6px; margin-top:3px; color:#edc585; }
+    #protectionStrip .protection-dot { width:6px; height:6px; border-radius:50%; background:currentColor; flex-shrink:0; }
+    #protectionStrip[data-state="protected"] .protection-state { color:#78dbb1; }
+    #protectionStrip[data-state="unarmed"] .protection-state { color:#acbdd5; }
+    #protectionStrip[data-state="connecting"] .protection-state, #protectionStrip[data-state="switching"] .protection-state { color:#91b9eb; }
+    #protectionStrip .protection-action { min-width:0; border-left:1px solid #294c7f; padding:10px 12px; display:flex; align-items:center; justify-content:center; flex-direction:column; gap:5px; }
+    #protectionStrip button { width:100%; min-height:34px; background:#061b48; color:#91d0ff; border:1px solid #315b9a; border-radius:8px; padding:7px 8px; font:600 12px "Segoe UI",sans-serif; cursor:pointer; }
+    #protectionStrip button:hover:not(:disabled) { background:#0c285b; border-color:#80b9ff; }
+    #protectionStrip button:disabled { cursor:wait; opacity:.7; }
+    #protectionStrip button:focus-visible { outline:2px solid #91d0ff; outline-offset:3px; }
+    #protectionStrip button[hidden], #protectionStrip p[hidden] { display:none; }
+    #protectionStrip p { color:#91b9eb; font-size:11px; line-height:1.45; text-align:left; width:100%; }
   </style>
 </head>
 <body>
@@ -992,12 +1034,45 @@
       <button class="nav-btn" id="tabServers" onclick="switchTab('servers')">
         <span id="tabServersLabel">Серверы (2)</span>
       </button>
+      <button class="nav-btn" id="tabConnections" onclick="switchTab('connections')"><span>Соединения</span></button>
       <button class="nav-btn" id="tabInfo" onclick="switchTab('info')">
         <span>Инфо / UAC</span>
       </button>
     </div>
 
+    <section id="protectionStrip" data-state="unknown" aria-label="Защита Windows">
+      <div class="protection-summary">
+        <svg class="protection-shield" viewBox="0 0 28 32" fill="none" aria-hidden="true"><path d="M14 2 25 6v9c0 7-5 12-11 15C8 27 3 22 3 15V6L14 2Z" stroke="currentColor" stroke-width="1.6"/><path d="M14 7 20 9v6c0 4-2 7-6 10-4-3-6-6-6-10V9l6-2Z" stroke="currentColor" stroke-width="1" opacity=".5"/></svg>
+        <div class="protection-copy"><strong>Защита Windows</strong><div class="protection-state"><span class="protection-dot" aria-hidden="true"></span><span id="protectionStatus" role="status" aria-live="polite">Статус неизвестен</span></div></div>
+      </div>
+      <div class="protection-action">
+        <button id="protectionRelease" type="button" onclick="releaseProtection()">Снять защиту</button>
+        <p id="protectionHelper">Проверьте подключение</p>
+      </div>
+    </section>
+    <div class="view-content hidden" id="viewConnections">
+      <h2>Соединения</h2>
+      <p id="connectionSource">Источник недоступен</p>
+      <p>Имена сайтов из HTTP/TLS, когда приложение их передаёт. Без расшифровки HTTPS. Короткие подключения могут отсутствовать.</p>
+      <div id="terminalLogPane" aria-label="Наблюдаемые соединения">
+        <div class="terminal-toolbar">
+          <input id="connectionFilter" aria-label="Фильтр по сайту или программе" placeholder="> Фильтр" oninput="renderConnections()">
+          <button id="connectionPause" class="action-btn btn-secondary" onclick="toggleConnectionPause()" aria-pressed="false">[ Пауза ]</button>
+          <button class="action-btn btn-secondary" onclick="clearConnections()">[ Очистить ]</button>
+        </div>
+        <div class="terminal-table-scroll"><table class="terminal-table">
+          <thead><tr><th aria-label="Выбор"></th><th>Время</th><th>Сайт / адрес</th><th>Программа</th><th>Протокол</th><th>Маршрут</th><th>Статус</th></tr></thead>
+          <tbody id="connectionRows"></tbody>
+        </table><p id="connectionEmpty">[ Нет записей по текущему фильтру ]</p></div>
+        <div class="terminal-inspector" aria-label="Выбранное соединение" aria-live="polite">
+          <div><span>Выбрано:</span> <strong id="connectionInspectorHost">Выберите строку</strong></div>
+          <div id="connectionInspectorDetails">Имя сайта показывается только когда его передаёт приложение.</div>
+        </div>
+        <div class="terminal-footer"><span><span id="connectionCount">0 / 0</span> записей · <span id="connectionPollStatus">Опрос включён</span></span><span>Снимки · без расшифровки HTTPS</span></div>
+      </div>
+    </div>
     <!-- ================= 1. VIEW HOME ================= -->
+    <p id="networkWarning" hidden style="margin:8px 20px;padding:10px 12px;color:#fde68a;background:#29241b;border-radius:8px;font-size:12px;line-height:1.5"></p>
     <div class="view-content" id="viewHome">
       <div class="duration-label">Your Connection Duration</div>
       <div class="timer-text" id="liveTimer">00:00:00</div>
@@ -1240,14 +1315,146 @@
       setTimeout(() => t.classList.remove('show'), 2200);
     }
 
+    let connectionRows = [], connectionCursor = 0, connectionPaused = false, connectionBusy = false;
+    let selectedConnectionKey = null;
+    function connectionKey(row) { return row.connection_key || 'sequence-'+String(row.sequence); }
+    function upsertConnections(rows) {
+      rows.forEach(row=>{
+        const key=connectionKey(row);
+        const index=connectionRows.findIndex(old=>connectionKey(old)===key);
+        if(index>=0) connectionRows[index]=row; else connectionRows.push(row);
+      });
+      connectionRows=connectionRows.slice(-1000);
+    }
+    function connectionRoute(row) {
+      const proxy=proxyList.find(item=>item.id===row.proxy_id);
+      const code=proxy && String(proxy.country_code || '').toUpperCase();
+      if(code && /^[A-Z]{2}$/.test(code) && !['PX','UN'].includes(code)) return code;
+      return (row.route || '').includes('proxy-out')?'Прокси':'Ядро';
+    }
+    function selectConnection(key) { selectedConnectionKey=key; renderConnections(key); }
+    function toggleConnectionPause() {
+      connectionPaused=!connectionPaused;
+      const button=document.getElementById('connectionPause');
+      button.textContent=connectionPaused?'[ Продолжить ]':'[ Пауза ]';
+      button.setAttribute('aria-pressed',String(connectionPaused));
+      document.getElementById('connectionPollStatus').textContent=connectionPaused?'Опрос на паузе':'Опрос включён';
+    }
+    function renderConnections(desiredFocusKey) {
+      const focusKey=desiredFocusKey || (document.activeElement && document.activeElement._connectionKey);
+      const query = document.getElementById('connectionFilter').value.toLowerCase();
+      const body = document.getElementById('connectionRows');
+      const records=connectionRows.filter(row=>row.kind==='connection');
+      const visible=records.filter(row=>JSON.stringify(row).toLowerCase().includes(query));
+      const selected=visible.find(row=>connectionKey(row)===selectedConnectionKey);
+      if(!selected) selectedConnectionKey=null;
+      body.replaceChildren();
+      visible.forEach(row=>{
+        const tr=document.createElement('tr');
+        const key=connectionKey(row), chosen=key===selectedConnectionKey;
+        tr._connectionKey=key;
+        tr.tabIndex=0; tr.className=chosen?'selected':'';
+        tr.setAttribute('aria-selected',String(chosen));
+        tr.addEventListener('click',()=>selectConnection(key));
+        tr.addEventListener('keydown',event=>{
+          if(event.key==='Enter' || event.key===' ') { event.preventDefault(); selectConnection(key); }
+        });
+        const process=(row.process || '').split(/[\\/]/).pop();
+        const app=process && process!=='unavailable'?process:'Не определена';
+        const values=[chosen?'>':'|',new Date(row.timestamp*1000).toLocaleTimeString(),row.destination || 'IP не указан',app,String(row.protocol || '—').toUpperCase(),connectionRoute(row),'Зафиксировано'];
+        values.forEach((value,index)=>{
+          const cell=document.createElement('td'); cell.textContent=value;
+          cell.className=['connection-marker','','connection-domain','','connection-protocol','','connection-status'][index];
+          cell.title=index===3?(row.process || ''):String(value);
+          if(index===2 && (row.address || row.port)) {
+            const secondary=document.createElement('small');
+            secondary.textContent=row.address && row.address!==row.destination ? row.address+(row.port?':'+row.port:'') : (row.port?'порт '+row.port:'Имя сайта не наблюдалось');
+            cell.appendChild(secondary);
+          }
+          tr.appendChild(cell);
+        });
+        body.appendChild(tr);
+        if(key===focusKey) tr.focus({preventScroll:true});
+      });
+      document.getElementById('connectionEmpty').hidden=visible.length>0;
+      document.getElementById('connectionCount').textContent=visible.length+' / '+records.length;
+      const host=document.getElementById('connectionInspectorHost');
+      const details=document.getElementById('connectionInspectorDetails');
+      host.textContent=selected?(selected.destination || selected.address || 'IP не указан'):'Выберите строку';
+      host.title=host.textContent;
+      details.textContent=selected?[(selected.process || 'Программа не определена').split(/[\\/]/).pop(),String(selected.protocol || '—').toUpperCase(),connectionRoute(selected),'Зафиксировано',selected.address && selected.address!==selected.destination?selected.address:''].filter(Boolean).join(' · '):'Имя сайта показывается только когда его передаёт приложение.';
+      details.title=selected?(selected.process || ''):'';
+    }
+    async function clearConnections() {
+      await window.pywebview.api.clear_connections(); connectionRows=[]; selectedConnectionKey=null; renderConnections();
+    }
+    let protectionState='unknown', protectionReleaseBusy=false;
+    function updateProtectionStrip(value) {
+      const states={unarmed:['Снята','Включится при подключении прокси'],protected:['Включена',''],blocked:['Интернет заблокирован','Соединение не установлено'],unknown:['Статус неизвестен','Проверьте подключение'],connecting:['Подключение','Проверяем подключение'],switching:['Переключение','Проверяем резервный сервер']};
+      protectionState=typeof value==='string' && Object.prototype.hasOwnProperty.call(states,value)?value:'unknown';
+      const [label,helper]=states[protectionState];
+      document.getElementById('protectionStrip').setAttribute('data-state',protectionState);
+      document.getElementById('protectionStatus').textContent=label;
+      const button=document.getElementById('protectionRelease');
+      button.hidden=protectionState==='unarmed';button.disabled=protectionReleaseBusy;
+      button.textContent=protectionReleaseBusy?'Снимаем…':'Снять защиту';
+      button.setAttribute('aria-busy',String(protectionReleaseBusy));
+      const hint=document.getElementById('protectionHelper');hint.textContent=helper;hint.hidden=!helper;
+    }
+    async function releaseProtection() {
+      if(protectionReleaseBusy) return;
+      let released=false;
+      protectionReleaseBusy=true;updateProtectionStrip(protectionState);
+      try {
+        const result=await window.pywebview.api.release_protection();
+        if(!result || !result.success) {
+          updateProtectionStrip('unknown');
+          alert((result && result.error) || 'Не удалось снять защиту. Повторите попытку или используйте локальное восстановление.');
+        } else { released=true;updateProtectionStrip('unarmed'); }
+      } catch(error) {
+        updateProtectionStrip('unknown');alert('Не удалось связаться с приложением. Повторите снятие защиты или используйте локальное восстановление.');
+      } finally { protectionReleaseBusy=false;updateProtectionStrip(protectionState); }
+      if(released) await refreshState();
+    }
+    let protectionPollBusy=false;
+    async function pollProtection() {
+      if(!window.pywebview || protectionPollBusy) return;
+      protectionPollBusy=true;
+      let expired=false;
+      const deadline=setTimeout(()=>{expired=true;updateProtectionStrip('unknown');},3500);
+      try {
+        const state=await window.pywebview.api.get_state();
+        if(!expired) updateProtectionStrip(state.protection);
+      } catch(error) { if(!expired) updateProtectionStrip('unknown'); }
+      finally { clearTimeout(deadline);protectionPollBusy=false; }
+    }
+    async function pollConnections() {
+      if(!window.pywebview || connectionBusy || connectionPaused) return;
+      connectionBusy=true;
+      try {
+        const data=await window.pywebview.api.get_connections(connectionCursor);
+        connectionCursor=data.cursor;
+        upsertConnections(data.rows);
+        document.getElementById('connectionSource').textContent=data.source==='unavailable'?'Источник недоступен':'Снимки ядра; максимум 1000 строк в памяти';
+        renderConnections();
+      } catch(error) { document.getElementById('connectionSource').textContent='Источник недоступен'; }
+      finally { connectionBusy=false; }
+    }
+    setInterval(pollProtection,2000);
+    setInterval(pollConnections,2000);
+
     // Switch tabs
     function switchTab(tab) {
-      ['Home', 'Servers', 'Info'].forEach(t => {
+      ['Home', 'Servers', 'Info', 'Connections'].forEach(t => {
         document.getElementById('view' + t).classList.add('hidden');
         document.getElementById('tab' + t).classList.remove('active');
       });
 
-      if (tab === 'home') {
+      if (tab === 'connections') {
+        document.getElementById('viewConnections').classList.remove('hidden');
+        document.getElementById('tabConnections').classList.add('active');
+        renderConnections();
+      } else if (tab === 'home') {
         document.getElementById('viewHome').classList.remove('hidden');
         document.getElementById('tabHome').classList.add('active');
       } else if (tab === 'servers') {
@@ -1787,6 +1994,8 @@
       document.getElementById('valDownload').innerText = s.speed_download || '0.0 Mb/s';
 
       // IP
+      const warning=document.getElementById('networkWarning');
+      warning.textContent=s.network_warning || ''; warning.hidden=!s.network_warning;
       if (s.system_ip) {
         updateIpDisplay(s.system_ip);
       }

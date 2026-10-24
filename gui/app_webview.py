@@ -26,6 +26,8 @@ from core.ip_service import (
     probe_proxy_protocol
 )
 from core.storage import save_proxies, load_proxies, load_settings, save_setting, get_secure_storage_path, StorageError, get_migration_error
+from core.connection_log import ConnectionJournal, ConnectionSource
+from core.protection_session import ProtectionSession
 from core.win_job import bind_self_to_job
 
 
@@ -65,6 +67,9 @@ class ProxyTunBridgeApi:
         self._lock = threading.RLock()       # Для мгновенных чтений/записей состояния
         self._op_lock = threading.Lock()     # Сериализует тяжелые операции start/stop
         self._sb = SingBoxManager()
+        self._journal = ConnectionJournal()
+        self._source = ConnectionSource(self._journal)
+        self._protection = ProtectionSession(self._sb, self._journal)
         self._state = TunState.IDLE
         self._last_error: Optional[str] = None
         self._error_seq: int = 0
@@ -87,10 +92,11 @@ class ProxyTunBridgeApi:
 
         self.selected_proxy_id: Optional[str] = self.proxies[0].id if self.proxies else None
         self.settings: Dict[str, Any] = load_settings()
+        self.settings["bypass_telegram"] = False
 
         self.is_admin = is_admin()
         self.connected_since: Optional[float] = None
-        self.current_system_ip: Dict[str, Any] = {"ip": "Загрузка...", "country_code": ""}
+        self.current_system_ip: Dict[str, Any] = {"ip": "IP появится после подключения", "country_code": "", "status": "unavailable"}
 
         # Телеметрия скорости
         self.last_net_bytes: Optional[Tuple[int, int]] = None
@@ -103,13 +109,44 @@ class ProxyTunBridgeApi:
 
         # Запуск фонового обновления IP и сторожевого таймера
         self._geo_pool = ThreadPoolExecutor(max_workers=4, thread_name_prefix="geo_worker")
-        self._refresh_ip_async()
         threading.Thread(target=self._watchdog_loop, daemon=True).start()
 
         # Фоновое доопределение гео для серверов без страны при старте в пуле воркеров
         unresolved_ids = [p.id for p in self.proxies if not p.country or p.get_country_code() == "PX"]
-        if unresolved_ids:
-            self._geo_pool.submit(self._resolve_proxies_batch_async, unresolved_ids)
+
+    def get_connections(self, after=0, query=""):
+        return self._journal.read(after, query=query)
+
+    def clear_connections(self):
+        self._journal.clear()
+        return {"success": True}
+
+    def release_protection(self):
+        with self._lock:
+            if getattr(self,'_release_pending',False):
+                return {"success":False,"busy":True,"error":"Снятие защиты уже выполняется"}
+            self._release_pending=True
+            self._op_generation=getattr(self,'_op_generation',0)+1
+            self._state=TunState.STOPPING
+            self._protection.cancel.set()
+            self._ip_gen += 1
+            self.current_system_ip={"ip":"IP не проверен: защита снимается", "country_code":"", "status":"unavailable"}
+        with self._op_lock:
+            try:
+                self._protection.release()
+                with self._lock:
+                    self._state = TunState.IDLE
+                    self.connected_since=None
+                    self._ip_gen += 1
+                    self.current_system_ip={"ip":"Защита снята: IP не проверен", "country_code":"", "status":"unavailable"}
+                return {"success": True}
+            except Exception:
+                with self._lock:
+                    self._state=TunState.ERROR
+                    self._protection.state='unknown'
+                return {"success": False, "error": "Не удалось снять защиту Windows; используйте локальное восстановление"}
+            finally:
+                with self._lock: self._release_pending=False
 
     def set_window(self, window):
         self._window = window
@@ -123,7 +160,7 @@ class ProxyTunBridgeApi:
                 pass
 
     def _resolve_single_proxy_async(self, proxy_id: str):
-        if self._closing:
+        if self._closing or self._protection.state != "unarmed":
             return
         with self._lock:
             p = next((x for x in self.proxies if x.id == proxy_id), None)
@@ -152,6 +189,8 @@ class ProxyTunBridgeApi:
             self._notify_ui_refresh()
 
     def _resolve_proxies_batch_async(self, proxy_ids: List[str]):
+        if self._protection.state != "unarmed": return
+
         updated = False
 
         def _worker(pid):
@@ -219,93 +258,126 @@ class ProxyTunBridgeApi:
                 return {"success": False, "error": str(e)}
             return {"success": True}
 
+    def _ip_context(self):
+        if self._closing:
+            return None
+        protection = self._protection
+        if protection.state == "protected":
+            if (self._state != TunState.RUNNING or protection.cancel.is_set()
+                    or not self._sb.is_running() or not self._sb.proxy_reachable):
+                return None
+            return (protection.generation, self._sb.process, "protected")
+        if protection.state == "unarmed" and self._state == TunState.IDLE:
+            return (protection.generation, None, "unarmed")
+        return None
+
     def _refresh_ip_async(self):
-        """Асинхронный опрос IP с защитой поколения от устаревших ответов."""
+        """Coalesced refresh, with lifecycle checks before request and publication."""
         with self._lock:
+            context = self._ip_context()
+            if context is None:
+                self._ip_gen += 1
+                self.current_system_ip = {"ip": "IP недоступен: туннель не подключён", "country_code": "", "status": "blocked"}
+                return
+            if getattr(self, "_ip_pending", False):
+                self._ip_retry = getattr(self, "_ip_pending_context", None) != context
+                if self._ip_retry:
+                    self.current_system_ip = {"ip": "IP недоступен: предыдущая проверка не завершена", "country_code": "", "status": "unavailable"}
+                return
             self._ip_gen += 1
-            current_gen = self._ip_gen
+            generation = self._ip_gen
+            self._ip_pending = True
+            self._ip_pending_context = context
+            self._ip_retry = False
+            self.current_system_ip = {"ip": "Проверка IP…", "country_code": "", "status": "checking"}
 
-        def _worker():
-            for delay in (0.8, 2.0):
-                time.sleep(delay)
+        def expire():
+            with self._lock:
+                if self._ip_pending and generation == self._ip_gen:
+                    self._ip_gen += 1  # Late query cannot publish after deadline.
+                    self.current_system_ip = {"ip": "IP недоступен: время проверки истекло", "country_code": "", "status": "unavailable"}
+        timer = threading.Timer(4.0, expire)
+        timer.daemon = True
+        timer.start()
+
+        def worker():
+            try:
                 with self._lock:
-                    if current_gen != self._ip_gen or self._closing:
+                    if generation != self._ip_gen or context != self._ip_context():
                         return
-                    is_run = self._sb.is_running()
-
-                data = get_current_system_ip(timeout=3.0)
-                ip_val = data.get("ip", "")
-                if ip_val and ip_val not in ("Unknown", "Не удалось определить"):
-                    country_code = (data.get("country_code") or "").upper().strip()
-                    if not country_code and is_run:
-                        with self._lock:
-                            act = self._sb.active_proxy
-                            if act and act.get_country_code():
-                                country_code = act.get_country_code()
-
-                    with self._lock:
-                        if current_gen == self._ip_gen and not self._closing:
-                            self.current_system_ip = {
-                                "ip": ip_val,
-                                "country_code": country_code,
-                                "country": data.get("country", "")
-                            }
-                    return
-
-        threading.Thread(target=_worker, daemon=True).start()
+                try:
+                    data = get_current_system_ip(timeout=3.0)
+                except Exception:
+                    data = {"ip": "IP недоступен", "country_code": "", "status": "unavailable"}
+                with self._lock:
+                    if generation == self._ip_gen and context == self._ip_context():
+                        self.current_system_ip = data
+            finally:
+                timer.cancel()
+                with self._lock:
+                    self._ip_pending = False
+                    retry = self._ip_retry and not self._closing
+                    if generation == self._ip_gen and context != self._ip_context():
+                        self.current_system_ip = {"ip": "IP не проверен: состояние изменилось", "country_code": "", "status": "unavailable"}
+                if retry:
+                    self._refresh_ip_async()
+        threading.Thread(target=worker, daemon=True).start()
 
     def _watchdog_loop(self):
-        """Сторожевой таймер: мгновенно обнаруживает падение sing-box и периодически проверяет связь (B-1)."""
-        probe_counter = 0
-        while True:
+        next_probe = time.monotonic() + 30
+        failures = 0
+        while not self._closing:
+            time.sleep(1.5)
+            if not self._op_lock.acquire(blocking=False):
+                continue
+            retry = False
             try:
-                time.sleep(1.5)
-                died = False
-                with self._lock:
-                    if self._closing:
-                        break
-                    is_run = (self._state == TunState.RUNNING and self._sb.is_running())
-                    if self._state == TunState.RUNNING and not self._sb.is_running():
-                        self._state = TunState.ERROR
-                        self._last_error = "TUN-процесс sing-box аварийно завершился — трафик НЕ защищён!"
-                        self._error_seq += 1
-                        self.connected_since = None
-                        died = True
-
-                    if not is_run:
-                        self._probe_fail_count = 0  # Сброс счетчика неудач между сессиями
-
-                if died and self._op_lock.acquire(blocking=False):
-                    try:
-                        self._sb.stop()
-                    finally:
-                        self._op_lock.release()
-
-                probe_counter += 1
-                # Периодическая проверка доступности прокси раз в ~30 сек при активном туннеле (R2/R6)
-                if not died and is_run and probe_counter >= 20:
-                    probe_counter = 0
+                if self._state != TunState.RUNNING:
+                    continue
+                generation = self._protection.generation
+                process = self._sb.process
+                if not self._sb.is_running():
+                    retry = True
+                else:
+                    self._source.poll(self._sb, generation)
+                    if time.monotonic() >= next_probe:
+                        reachable = self._sb._probe_tunnel(process, deadline=time.monotonic()+2.5)
+                        next_probe = time.monotonic()+min(300,30*2**min(failures,4))
+                        if generation == self._protection.generation and process is self._sb.process:
+                            failures = 0 if reachable else failures+1
+                            retry = not reachable
+                if retry and not self._closing and self._state == TunState.RUNNING:
+                    current = self._sb.active_proxy.id if self._sb.active_proxy else None
                     with self._lock:
-                        p = self._sb.process
-                    if p:
-                        reachable = self._sb._probe_tunnel(p, deadline=time.monotonic() + 2.5)
-                        with self._lock:
-                            if self._state == TunState.RUNNING and self._sb.is_running() and not self._closing:
-                                if not reachable:
-                                    self._probe_fail_count += 1
-                                    # Требуется 3 неудачи подряд для предотвращения ложных срабатываний
-                                    if self._probe_fail_count >= 3 and self._sb.proxy_reachable:
-                                        self._sb.proxy_reachable = False
-                                        self._last_error = "Прокси-сервер перестал отвечать (проверьте интернет или доступность сервера)."
-                                        self._error_seq += 1
-                                else:
-                                    self._probe_fail_count = 0
-                                    if not self._sb.proxy_reachable:
-                                        self._sb.proxy_reachable = True
-                                        self._last_error = None
+                        if self._closing or self._state != TunState.RUNNING or getattr(self,'_release_pending',False) or self._protection.cancel.is_set():
+                            continue
+                        candidates = [p for p in self.proxies if p.id != current]
+                        self._state = TunState.STARTING
+                        self._ip_gen += 1
+                        self.current_system_ip = {"ip": "Переключение сервера…", "country_code": "", "status": "unavailable"}
+                    success = self._protection.connect(candidates)
+                    with self._lock:
+                        if getattr(self,'_release_pending',False) or self._closing:
+                            continue
+                        self._state = TunState.RUNNING if success else TunState.ERROR
+                        self._last_error = None if success else "Интернет заблокирован: резервные серверы недоступны"
+                        self.connected_since = time.time() if success else None
+                        if not success: self._error_seq += 1
+                    self._refresh_ip_async()
             except Exception:
-                import logging
-                logging.error("Ошибка в цикле сторожевого таймера (watchdog)", exc_info=True)
+                with self._lock:
+                    if getattr(self,'_release_pending',False):
+                        continue
+                    self._state = TunState.ERROR
+                    self._last_error = "Ошибка защиты Windows; подключение остановлено"
+                    self._error_seq += 1
+                try:
+                    self._sb.stop()
+                except Exception:
+                    self._protection.state = "unknown"
+                self._refresh_ip_async()
+            finally:
+                self._op_lock.release()
 
     def _proxy_to_dict(self, p: Optional[ProxyItem]) -> Optional[Dict[str, Any]]:
         if not p:
@@ -349,11 +421,13 @@ class ProxyTunBridgeApi:
                 "connected_since": self.connected_since,
                 "is_admin": self.is_admin,
                 "system_ip": self.current_system_ip,
+                "network_warning": self._network_warning(),
                 "speed_upload": f"{self.current_upload_mbps:.1f} Mb/s",
                 "speed_download": f"{self.current_download_mbps:.1f} Mb/s",
                 "active_proxy": self._proxy_to_dict(act),
                 "selected_proxy": self._proxy_to_dict(sel),
                 "proxies": [self._proxy_to_dict(p) for p in self.proxies],
+                "protection": self._protection.state,
                 "settings": dict(self.settings)
             }
 
@@ -366,11 +440,11 @@ class ProxyTunBridgeApi:
             err_seq = self._error_seq
             proxy_reach = self._sb.proxy_reachable
 
-        # Точный подсчет скорости конкретно интерфейса sing-tun
+        # Точный подсчет скорости текущего интерфейса ядра
         if psutil is not None:
             try:
                 pernic = psutil.net_io_counters(pernic=True)
-                tun_stat = pernic.get("sing-tun") or pernic.get("ProxyTUN")
+                tun_stat = pernic.get(self._sb.interface_name)
                 now_net = tun_stat if (tun_stat and is_run) else psutil.net_io_counters()
                 now_time = time.time()
                 
@@ -406,14 +480,18 @@ class ProxyTunBridgeApi:
     def toggle_tun(self) -> Dict[str, Any]:
         """Атомарный запуск/остановка TUN-режима в фоне."""
         with self._lock:
-            if self._closing:
+            if self._closing or getattr(self,'_release_pending',False):
                 return {"success": False, "busy": True}
 
-            if self._state in (TunState.STARTING, TunState.STOPPING):
+            if self._state == TunState.STARTING:
+                self._protection.cancel.set()
+                return {"success": True, "state": "stopping"}
+            if self._state == TunState.STOPPING:
                 return {"success": False, "busy": True, "state": self._state}
 
             if self._state == TunState.RUNNING:
                 self._state = TunState.STOPPING
+                self._protection.cancel.set()
                 target = "stop"
             else:
                 if not self.is_admin:
@@ -424,17 +502,21 @@ class ProxyTunBridgeApi:
                 sel = self._get_selected_proxy()
                 if not sel:
                     return {"success": False, "error": "Список серверов пуст. Добавьте прокси!"}
+                self._protection.cancel.clear()
                 self._state = TunState.STARTING
                 target = "start"
 
-            threading.Thread(target=self._do_toggle, args=(target,), daemon=True).start()
+            self._ip_gen += 1
+            self.current_system_ip = {"ip": "IP после подключения" if target == "start" else "Туннель отключён", "country_code": "", "status": "unavailable"}
+            self._op_generation=getattr(self,'_op_generation',0)+1
+            threading.Thread(target=self._do_toggle, args=(target,self._op_generation), daemon=True).start()
             return {"success": True, "state": self._state}
 
-    def _do_toggle(self, target: str):
+    def _do_toggle(self, target: str, generation=None):
         """Выполняет длинные операции запуска/остановки без удержания _lock."""
         with self._op_lock:
             with self._lock:
-                if self._closing:
+                if self._closing or getattr(self,'_release_pending',False) or (generation is not None and generation!=getattr(self,'_op_generation',0)):
                     return
                 sel = self._get_selected_proxy()
                 if target == "start" and not sel:
@@ -447,40 +529,45 @@ class ProxyTunBridgeApi:
             try:
                 if target == "start":
                     if sel:
-                        self._sb.start(sel, bypass_telegram=bypass_tg)
                         with self._lock:
-                            self.connected_since = time.time()
+                            candidates = [sel] + [p for p in self.proxies if p.id != sel.id]
+                        success = self._protection.connect(candidates)
+                        with self._lock:
+                            if getattr(self,'_release_pending',False) or self._closing:
+                                return
+                            self.connected_since = time.time() if success else None
                             self._probe_fail_count = 0
-                            self._state = TunState.RUNNING
-                            if not self._sb.proxy_reachable:
-                                self._last_error = (
-                                    "Туннель поднят, но прокси не отвечает: "
-                                    "проверьте адрес, логин/пароль и доступность сервера."
-                                )
-                                self._error_seq += 1
-                            else:
-                                self._last_error = None
+                            self._state = TunState.RUNNING if success else TunState.ERROR
+                            self._last_error = None if success else "Интернет заблокирован: серверы недоступны"
+                            if not success: self._error_seq += 1
                 else:
-                    self._sb.stop()
+                    self._protection.stop()
                     with self._lock:
                         self.connected_since = None
                         self._probe_fail_count = 0
                         self._state = TunState.IDLE
                         self._last_error = None
             except Exception as e:
-                self._sb.stop()
+                self._protection.state = "unknown"
                 with self._lock:
+                    if getattr(self,'_release_pending',False):
+                        return
                     self._state = TunState.ERROR
-                    self._last_error = str(e)
+                    self._last_error = "Ошибка защиты Windows или остановки TUN. Повторите попытку."
                     self._error_seq += 1
                     self.connected_since = None
+                try:
+                    self._sb.stop()
+                except Exception:
+                    # ERROR is already published; retain protection and allow retry.
+                    pass
 
         self._refresh_ip_async()
 
     def select_proxy(self, proxy_id: str) -> Dict[str, Any]:
         """Выбор активного сервера с безопасным перезапуском."""
         with self._lock:
-            if self._closing or self._state in (TunState.STARTING, TunState.STOPPING):
+            if self._closing or getattr(self,'_release_pending',False) or self._state in (TunState.STARTING, TunState.STOPPING):
                 return {"success": False, "busy": True}
 
             changed = (proxy_id != self.selected_proxy_id)
@@ -488,8 +575,10 @@ class ProxyTunBridgeApi:
             sel = self._get_selected_proxy()
 
             if changed and self._state == TunState.RUNNING and sel:
+                self._protection.cancel.clear()
                 self._state = TunState.STARTING
-                threading.Thread(target=self._do_toggle, args=("start",), daemon=True).start()
+                self._op_generation=getattr(self,'_op_generation',0)+1
+                threading.Thread(target=self._do_toggle, args=("start",self._op_generation), daemon=True).start()
 
             return {"success": True, "selected_proxy": self._proxy_to_dict(sel)}
 
@@ -608,6 +697,9 @@ class ProxyTunBridgeApi:
         return {"success": True, "count": len(items)}
 
     def ping_proxy(self, proxy_id: str) -> Dict[str, Any]:
+        if self._protection.state != "unarmed":
+            return {"success": False, "error": "Фоновые прямые проверки отключены при защите"}
+
         """Быстрый замер задержки конкретного сервера и доопределение гео при необходимости."""
         with self._lock:
             target_proxy = next((p for p in self.proxies if p.id == proxy_id), None)
@@ -628,6 +720,9 @@ class ProxyTunBridgeApi:
         return {"success": False, "latency": None}
 
     def ping_all(self) -> Dict[str, Any]:
+        if self._protection.state != "unarmed":
+            return {"success": False, "error": "Фоновые прямые проверки отключены при защите"}
+
         """Параллельный замер задержки всех серверов с доопределением неизвестных гео."""
         with self._lock:
             proxies_copy = list(self.proxies)
@@ -661,6 +756,23 @@ class ProxyTunBridgeApi:
         self._refresh_ip_async()
         with self._lock:
             return self.current_system_ip
+
+    def _network_warning(self):
+        # Read only the enable flag; never export configured proxy endpoints.
+        now = time.monotonic()
+        if now-getattr(self,'_proxy_warning_checked',-100)>10:
+            warning = ''
+            try:
+                import winreg
+                with winreg.OpenKey(winreg.HKEY_CURRENT_USER,r'Software\Microsoft\Windows\CurrentVersion\Internet Settings') as key:
+                    enabled,_ = winreg.QueryValueEx(key,'ProxyEnable')
+                if enabled:
+                    warning = 'Включён системный прокси Windows: он может мешать TUN и скрывать имена сайтов. Для TUN отключите прежний прокси Windows или расширение браузера вручную.'
+            except (ImportError,OSError):
+                pass
+            self._proxy_warning_checked = now
+            self._proxy_warning = warning
+        return self._proxy_warning
 
     def copy_proxy_by_id(self, proxy_id: str) -> Dict[str, Any]:
         """Копирует строку прокси в буфер обмена Windows через clip.exe без передачи пароля в JS."""
@@ -699,24 +811,15 @@ class ProxyTunBridgeApi:
             return dict(self.settings)
 
     def set_bypass_telegram(self, enabled: bool) -> Dict[str, Any]:
-        """Включает/выключает обход Telegram (Direct) с бесшовным обновлением туннеля."""
-        with self._lock:
-            self.settings["bypass_telegram"] = bool(enabled)
-            try:
-                save_setting("bypass_telegram", bool(enabled))
-            except Exception as e:
-                return {"success": False, "error": str(e)}
-
-            if self._state == TunState.RUNNING and self._get_selected_proxy():
-                self._state = TunState.STARTING
-                threading.Thread(target=self._do_toggle, args=("start",), daemon=True).start()
-
-            return {"success": True, "bypass_telegram": bool(enabled)}
+        return {"success": False, "error": "Прямые исключения отключены в защищённом режиме", "bypass_telegram": False}
 
     def shutdown(self):
         """Гарантированная остановка сетевой службы при закрытии приложения."""
         with self._lock:
+            self._protection.cancel.set()
             self._closing = True
+            self._op_generation=getattr(self,'_op_generation',0)+1
+        self._journal.clear()
         if hasattr(self, "_geo_pool"):
             try:
                 self._geo_pool.shutdown(wait=False, cancel_futures=True)
@@ -725,7 +828,10 @@ class ProxyTunBridgeApi:
             except Exception:
                 pass
         with self._op_lock:
-            self._sb.stop()
+            try:
+                self._protection.stop()
+            finally:
+                self._journal.clear()
 
 
 _single_instance_mutex = None

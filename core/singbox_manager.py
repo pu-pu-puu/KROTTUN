@@ -9,6 +9,7 @@ import socket
 import ipaddress
 import threading
 import logging
+import uuid
 from typing import Optional, List, Tuple
 from core.proxy_model import ProxyItem
 from core.admin_utils import is_admin
@@ -42,7 +43,47 @@ def _resolve_v4(host: str) -> List[str]:
 
 _console_lock = threading.Lock()
 
+_probe_init_lock = threading.Lock()
+
+
+def _probe_request(url, check_type, timeout):
+    import requests
+    with requests.Session() as session:
+        session.trust_env = False
+        response = session.get(url, timeout=timeout, allow_redirects=False, stream=True)
+        try:
+            if check_type == '204':
+                return response.status_code == 204
+            return response.status_code == 200 and response.raw.read(64,decode_content=True).strip() == b'success'
+        finally:
+            response.close()
+
+
+def _probe_process_main(pipe, targets, deadline, ready):
+    try:
+        if not ready.wait(max(0,deadline-time.monotonic())): return
+        for url, check_type in targets:
+            remaining = deadline-time.monotonic()
+            if remaining <= .05:
+                break
+            try:
+                if _probe_request(url,check_type,min(1.5,remaining)):
+                    pipe.send(time.monotonic() < deadline)
+                    return
+            except Exception:
+                pass
+        pipe.send(False)
+    finally:
+        pipe.close()
+
+
 class SingBoxManager:
+    @property
+    def interface_name(self) -> str:
+        if not getattr(self,'_interface_name',None):
+            self._interface_name='sing-tun-'+uuid.uuid4().hex
+        return self._interface_name
+
     def __init__(self, base_dir: Optional[str] = None):
         if base_dir is None:
             if getattr(sys, 'frozen', False):
@@ -65,6 +106,8 @@ class SingBoxManager:
         self.active_proxy: Optional[ProxyItem] = None
         self.proxy_reachable: bool = False
         self.err_file = None
+        self.protected = False
+        self.on_tunnel_ready = None
 
         # Установка и проверка целостности бинарников
         for fname in PINNED_HASHES:
@@ -151,6 +194,7 @@ class SingBoxManager:
         proxy_ip_cidrs = [f"{ip}/32" for ip in resolved_ips] if resolved_ips else []
 
         route_rules = [
+            {"action": "sniff", "sniffer": ["http", "tls", "dns"], "timeout": "300ms"},
             {"protocol": "dns", "action": "hijack-dns"},
             {"ip_version": 6, "action": "reject"}
         ]
@@ -199,7 +243,7 @@ class SingBoxManager:
 
         norm_log_path = self.log_path.replace("\\", "/")
 
-        return {
+        config = {
             "log": {
                 "level": "warn",
                 "output": norm_log_path,
@@ -250,7 +294,7 @@ class SingBoxManager:
                 {
                     "type": "tun",
                     "tag": "tun-in",
-                    "interface_name": "sing-tun",
+                    "interface_name": self.interface_name,
                     "address": ["198.18.0.1/30"],
                     "auto_route": True,
                     "strict_route": False,
@@ -269,13 +313,35 @@ class SingBoxManager:
             ],
             "route": {
                 "rules": route_rules,
+                "find_process": True,
                 "auto_detect_interface": True,
                 "default_domain_resolver": "dns-direct"
             }
         }
 
-    def is_adapter_present(self, name: str = "sing-tun") -> bool:
+        if getattr(self, "protected", False):
+            # The outer socket is permitted by WFP, never by a broad direct route.
+            ipaddress.ip_address(proxy.host)
+            config["inbounds"][0]["strict_route"] = True
+            config["inbounds"][0]["route_exclude_address"] = ["127.0.0.0/8"]
+            config["route"]["rules"] = [r for r in route_rules if r.get("outbound") != "direct"]
+            config["route"]["rules"].append({"network": "udp", "action": "reject"})
+            config["route"]["final"] = "proxy-out"
+            config["route"].pop("default_domain_resolver", None)
+            config["dns"]["servers"] = [x for x in config["dns"]["servers"] if x["tag"] != "dns-direct"]
+            config["dns"]["rules"] = [x for x in config["dns"]["rules"] if x.get("server") != "dns-direct"]
+            config["outbounds"] = [outbound_proxy]
+            import secrets
+            self.controller_secret = secrets.token_urlsafe(32)
+            self.controller_port = 49152 + secrets.randbelow(16384)
+            config["experimental"] = {"clash_api": {
+                "external_controller": "127.0.0.1:" + str(self.controller_port),
+                "secret": self.controller_secret}}
+        return config
+
+    def is_adapter_present(self, name: Optional[str] = None) -> bool:
         """Проверяет наличие сетевого интерфейса через psutil без запуска процессов netsh."""
+        name = self.interface_name if name is None else name
         if psutil is not None:
             try:
                 return name in psutil.net_if_stats()
@@ -325,7 +391,8 @@ class SingBoxManager:
 
     def stop(self):
         """Останавливает только свой процесс sing-box с корректной выгрузкой Wintun."""
-        p, self.process = self.process, None
+        self._stop_probe()
+        p = self.process
         if p and p.poll() is None:
             stopped = False
             try:
@@ -344,6 +411,11 @@ class SingBoxManager:
                     except Exception:
                         pass
 
+        # Keep ownership and protection intact unless exit is observable.
+        if p is not None and p.poll() is None:
+            raise RuntimeError("sing-box did not exit; protection retained")
+        self.process = None
+
         if self.err_file and not self.err_file.closed:
             try:
                 self.err_file.close()
@@ -354,7 +426,7 @@ class SingBoxManager:
         # Ожидаем полного освобождения драйвера Wintun стеком Windows
         start_wait = time.time()
         while time.time() - start_wait < 2.5:
-            if not self.is_adapter_present("sing-tun"):
+            if not self.is_adapter_present():
                 break
             time.sleep(0.05)
 
@@ -365,7 +437,7 @@ class SingBoxManager:
     def _wait_ready(self, p: subprocess.Popen, timeout: float = 15.0) -> bool:
         """
         Надежная проверка готовности адаптера (M1):
-        Проверка назначения IP-адреса 198.18.0.1 интерфейсу sing-tun и отсутствия ошибок в логе.
+        Проверка IP текущего интерфейса и отсутствия ошибок в логе.
         """
         deadline = time.monotonic() + timeout
         has_ip = False
@@ -374,11 +446,11 @@ class SingBoxManager:
                 return False
 
             if psutil is not None:
-                addrs = psutil.net_if_addrs().get("sing-tun", [])
+                addrs = psutil.net_if_addrs().get(self.interface_name, [])
                 if any(getattr(a, "address", "") == "198.18.0.1" for a in addrs):
                     has_ip = True
                     break
-            elif self.is_adapter_present("sing-tun"):
+            elif self.is_adapter_present():
                 has_ip = True
                 break
 
@@ -394,40 +466,82 @@ class SingBoxManager:
 
         return has_ip
 
+    def _probe_state(self):
+        with _probe_init_lock:
+            if not hasattr(self,'_probe_gate'):
+                self._probe_gate=threading.Lock()
+                self._probe_cancel=threading.Event()
+                self._probe_generation=0
+        return self._probe_gate
+
+    def _stop_probe(self):
+        gate=self._probe_state()
+        self._probe_cancel.set()
+        self._probe_generation+=1
+        if not gate.acquire(timeout=1.5):
+            raise RuntimeError('Probe shutdown unconfirmed; protection retained')
+        try:
+            orphan=getattr(self,'_probe_orphan',None)
+            if orphan is not None:
+                if orphan.is_alive(): orphan.kill();orphan.join(timeout=.5)
+                if orphan.is_alive(): raise RuntimeError('Probe exit unconfirmed; protection retained')
+                orphan.close();self._probe_orphan=None
+        finally: gate.release()
+
     def _probe_tunnel(self, p: subprocess.Popen, deadline: float, endpoints: Optional[List[Tuple[str, str]]] = None) -> bool:
-        """
-        Проверяет доступность интернета через поднятый туннель (R2/R6).
-        Строго различает типы ответов: 204 без редиректа для generate_204 и тело 'success' для Firefox.
-        Исключает ложное срабатывание при перехвате captive portal / заглушкой провайдера.
-        """
-        import requests
-        targets = endpoints or [
-            ("https://cp.cloudflare.com/generate_204", "204"),
-            ("https://www.gstatic.com/generate_204", "204"),
-            ("http://cp.cloudflare.com/generate_204", "204"),
-            ("http://detectportal.firefox.com/success.txt", "firefox_success"),
-        ]
-        with requests.Session() as s:
-            s.trust_env = False
-            while time.monotonic() < deadline and p.poll() is None:
-                for url, check_type in targets:
-                    rem = deadline - time.monotonic()
-                    if rem <= 0.1 or p.poll() is not None:
-                        break
-                    req_timeout = min(1.5, rem)
-                    try:
-                        resp = s.get(url, timeout=req_timeout, allow_redirects=False)
-                        if check_type == "204" and resp.status_code == 204:
-                            return True
-                        elif check_type == "firefox_success" and resp.status_code == 200:
-                            if resp.text.strip() == "success":
-                                return True
-                    except requests.RequestException:
-                        pass
-                    except Exception:
-                        pass
-                time.sleep(0.2)
-        return False
+        import multiprocessing
+        gate=self._probe_state()
+        if not gate.acquire(blocking=False):
+            return False
+        process=None; receiver=None; sender=None
+        generation=self._probe_generation
+        external=getattr(self,'probe_cancel',None)
+        def valid():
+            return (time.monotonic()<deadline and p.poll() is None
+                and getattr(self,'process',p) is p and generation==self._probe_generation
+                and not self._probe_cancel.is_set() and not (external is not None and external.is_set()))
+        try:
+            if getattr(self,'_probe_orphan',None) is not None: return False
+            if not valid(): return False
+            context=multiprocessing.get_context('spawn')
+            receiver,sender=context.Pipe(duplex=False)
+            targets=endpoints or [('https://cp.cloudflare.com/generate_204','204'),
+                ('https://www.gstatic.com/generate_204','204'),
+                ('http://cp.cloudflare.com/generate_204','204'),
+                ('http://detectportal.firefox.com/success.txt','firefox_success')]
+            ready=context.Event()
+            process=context.Process(target=getattr(self,'_probe_worker_target',_probe_process_main),args=(sender,targets,deadline,ready),daemon=True)
+            process.start();self._probe_orphan=process;sender.close()
+            from types import SimpleNamespace
+            # Child cannot issue a request until assigned to kill-on-close job,
+            # even when binding the GUI itself to a job was unavailable.
+            if not bind_to_lifetime(SimpleNamespace(_handle=process.sentinel)): return False
+            if not valid(): return False
+            ready.set()
+            while valid():
+                if receiver.poll(min(.025,max(0,deadline-time.monotonic()))):
+                    result=receiver.recv()
+                    return result is True and valid()
+                if not process.is_alive(): break
+            return False
+        except (EOFError,OSError):
+            return False
+        finally:
+            try:
+                if process is not None and process.pid is not None:
+                    self._probe_orphan=process
+                    if process.is_alive(): process.terminate()
+                    process.join(timeout=.5)
+                    if process.is_alive(): process.kill();process.join(timeout=.5)
+                    if process.is_alive():
+                        self._probe_orphan=process
+                        raise RuntimeError('Probe exit unconfirmed; protection retained')
+                    process.close()
+                    self._probe_orphan=None
+            finally:
+                if receiver is not None: receiver.close()
+                if sender is not None: sender.close()
+                gate.release()
 
     def start(self, proxy: ProxyItem, bypass_telegram: bool = False) -> bool:
         """Запускает TUN подключение с передачей конфига через stdin и проверкой SHA-256."""
@@ -439,12 +553,18 @@ class SingBoxManager:
         # Гарантированное ожидание освобождения старого адаптера Wintun
         start_wait = time.time()
         while time.time() - start_wait < 3.0:
-            if not self.is_adapter_present("sing-tun"):
+            if not self.is_adapter_present():
                 break
             time.sleep(0.05)
         else:
             raise RuntimeError("Wintun адаптер ещё не освобождён системой. Подождите пару секунд и повторите.")
 
+        # sing-box derives the Windows adapter GUID from its name. Never reuse
+        # a crashed core's stale native identity; old process exit is confirmed
+        # by stop() before rotating this exact adapter identity.
+        self._interface_name='sing-tun-'+uuid.uuid4().hex
+        self._probe_state()
+        self._probe_cancel.clear()
         config_data = self.generate_config(proxy, bypass_telegram=bypass_telegram)
         cfg_bytes = json.dumps(config_data, ensure_ascii=False).encode("utf-8")
 
@@ -513,6 +633,9 @@ class SingBoxManager:
 
             self.stop()
             raise RuntimeError(f"Не удалось инициализировать TUN-адаптер sing-box:\n{err_msg or 'Ошибка запуска службы'}")
+
+        if self.on_tunnel_ready is not None:
+            self.on_tunnel_ready()
 
         # Проверка фактической доступности прокси через поднятый туннель (R2)
         self.proxy_reachable = self._probe_tunnel(p, deadline=time.monotonic() + 6.0)
