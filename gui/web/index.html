@@ -657,6 +657,7 @@
       padding-right: 4px;
     }
     .server-item {
+      gap: 10px;
       padding: 10px 12px;
       display: flex;
       align-items: center;
@@ -682,12 +683,14 @@
     }
 
     .item-left {
+      flex: 1 1 0;
       display: flex;
       min-width: 0;
       align-items: center;
       gap: 10px;
     }
     .radio-circle {
+      flex-shrink: 0;
       width: 14px;
       height: 14px;
       border-radius: 50%;
@@ -742,16 +745,20 @@
       border: 0.5px solid rgba(255, 255, 255, 0.2);
     }
     .item-info {
+      flex: 1 1 0;
       display: flex;
       min-width: 0;
       flex-direction: column;
     }
     .item-title-row {
+      min-width: 0;
       display: flex;
       align-items: center;
       gap: 6px;
     }
     .item-name {
+      flex: 1 1 0;
+      min-width: 0;
       overflow: hidden;
       text-overflow: ellipsis;
       white-space: nowrap;
@@ -769,6 +776,8 @@
       margin-top: 2px;
     }
 
+    .item-title-row .proto-badge { flex: 0 0 auto; }
+    .item-right .ping-badge { min-width: 57px; justify-content: center; white-space: nowrap; }
     .item-right {
       display: flex;
       flex-shrink: 0;
@@ -1794,12 +1803,19 @@
       b.className = 'proto-badge ' + (p.protocol || 'socks5').toLowerCase();
 
       const pingEl = document.getElementById('cardPingBadge');
+      pingEl.title = pingMeasurementLabel(p);
+      pingEl.setAttribute('aria-label', pingMeasurementLabel(p));
       if (p.latency_ms !== null && p.latency_ms !== undefined) {
         pingEl.textContent = `${p.latency_ms} ms`;
         pingEl.style.display = 'inline-block';
       } else {
-        pingEl.textContent = '— ms';
+        pingEl.textContent = p.last_status === 'dead' ? 'Таймаут' : '— ms';
       }
+    }
+
+    function pingMeasurementLabel(p) {
+      const mode = p.latency_mode === 'tun' ? 'Отклик через TUN · авторизация не проверяется' : 'TCP напрямую';
+      return mode + (p.latency_ms == null ? (p.last_status === 'dead' ? ' · Таймаут' : ' · Не проверен') : '');
     }
 
     function renderServersList() {
@@ -1867,7 +1883,9 @@
         const ping = document.createElement('div');
         ping.className = 'ping-badge';
         ping.style.fontSize = '10px';
-        ping.innerText = p.latency_ms !== null && p.latency_ms !== undefined ? `${p.latency_ms} ms` : '— ms';
+        ping.title = pingMeasurementLabel(p);
+        ping.setAttribute('aria-label', pingMeasurementLabel(p));
+        ping.innerText = p.latency_ms !== null && p.latency_ms !== undefined ? `${p.latency_ms} ms` : p.last_status === 'dead' ? 'Таймаут' : '— ms';
         right.appendChild(ping);
 
         const btnCopy = document.createElement('button');
@@ -2008,37 +2026,52 @@
       pendingDeleteId = null;
     }
 
-    async function testSelectedPing() {
-      if (!window.pywebview || !selectedProxy) return;
-      const btn = document.getElementById('btnTestPing');
-      const badge = document.getElementById('cardPingBadge');
-      btn.innerHTML = uiIcon('more') + ' Замер...';
-      badge.innerHTML = uiIcon('more') + ' ...';
-
-      const res = await window.pywebview.api.ping_proxy(selectedProxy.id);
-      btn.innerHTML = uiIcon('pulse') + ' Проверить пинг';
-      if (res && res.latency !== null) {
-        badge.innerText = `${res.latency} ms`;
-        selectedProxy.latency_ms = res.latency;
-      } else {
-        badge.innerText = 'Таймаут';
+    let pingBusy = false, pingRpcPending = false;
+    async function runPing(all) {
+      if (!window.pywebview || pingBusy || (!all && !selectedProxy)) return;
+      if (pingRpcPending) { showToast('Предыдущий запрос замера ещё завершается. Повторите позже.'); return; }
+      pingBusy = true;
+      const selectedId = selectedProxy && selectedProxy.id;
+      const buttons = [document.getElementById('btnTestPing'), document.getElementById('btnPingAll')];
+      const button = buttons[all ? 1 : 0];
+      buttons.forEach(b => b.disabled = true);
+      button.innerHTML = uiIcon('more') + ' Замер...';
+      let timer;
+      try {
+        pingRpcPending = true;
+        let call;
+        try { call = Promise.resolve(all ? window.pywebview.api.ping_all() : window.pywebview.api.ping_proxy(selectedId)); }
+        catch (err) { pingRpcPending = false; throw err; }
+        call.then(() => { pingRpcPending = false; }, () => { pingRpcPending = false; });
+        const res = await Promise.race([call, new Promise((_, reject) => {
+          timer = setTimeout(() => reject(Error('Время TCP-замера истекло. Повторите попытку.')), 10000);
+        })]);
+        if (!res || res.success !== true) throw Error(res && res.error || 'Нет ответа на TCP-замер');
+        const mode = res.mode === 'tun' ? 'Отклик через TUN' : 'TCP напрямую';
+        if (Array.isArray(res.proxies)) { proxyList = res.proxies; renderServersList(); }
+        if (!all && selectedProxy && selectedProxy.id === selectedId) {
+          const valid = typeof res.latency === 'number' && Number.isFinite(res.latency) && res.latency >= 0;
+          selectedProxy.latency_ms = valid ? res.latency : null;
+          selectedProxy.latency_mode = res.mode === 'tun' ? 'tun' : 'tcp';
+          const badge = document.getElementById('cardPingBadge');
+          badge.textContent = valid ? `${res.latency} ms` : res.status === 'timeout' ? 'Таймаут' : 'Не проверен';
+          badge.title = mode;
+        }
+        const rows = Array.isArray(res.results) ? res.results : [];
+        const passed = rows.filter(r => r.status === 'alive').length;
+        showToast(`${mode}: ${passed}/${rows.length} ответили. Таймаут не подтверждает доступность.`);
+      } catch (err) {
+        showToast(err.message || 'Не удалось выполнить TCP-замер');
+      } finally {
+        clearTimeout(timer);
+        pingBusy = false;
+        buttons.forEach(b => b.disabled = false);
+        buttons[0].innerHTML = uiIcon('pulse') + ' Проверить пинг';
+        buttons[1].innerHTML = uiIcon('pulse') + ' Замерить все';
       }
-      refreshState();
     }
-
-    async function testAllPings() {
-      if (!window.pywebview) return;
-      const btn = document.getElementById('btnPingAll');
-      btn.innerHTML = uiIcon('more') + ' Замер...';
-
-      const res = await window.pywebview.api.ping_all();
-      btn.innerHTML = uiIcon('pulse') + ' Замерить все';
-      if (res && res.proxies) {
-        proxyList = res.proxies;
-        renderServersList();
-        showToast('Замер всех узлов завершен');
-      }
-    }
+    async function testSelectedPing() { return runPing(false); }
+    async function testAllPings() { return runPing(true); }
 
     async function triggerIpRefresh() {
       if (!window.pywebview) return;

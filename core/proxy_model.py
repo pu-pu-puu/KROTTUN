@@ -18,6 +18,8 @@ class ProxyItem:
     country_code: str = ""
     last_status: str = "unknown"  # alive, dead, unknown
 
+    latency_mode: str = "tcp"  # tcp (legacy direct connect) or tun (protocol response)
+
     def __post_init__(self):
         proto = (self.protocol or "socks5").lower().strip()
         self.protocol = proto if proto in ("socks5", "http") else "socks5"

@@ -32,6 +32,7 @@ from core.connection_log import ConnectionJournal, ConnectionSource
 from core.protection_session import ProtectionSession
 from core.win_job import bind_self_to_job
 from core.diagnostics import DiagnosticsService, system_proxy_flag
+from core.ping_service import PingService
 
 
 class TunState:
@@ -137,6 +138,13 @@ class ProxyTunBridgeApi:
             self._ip_gen += 1
             self.current_system_ip={"ip":"IP не проверен: защита снимается", "country_code":"", "status":"unavailable"}
             self.cancel_diagnostics()
+            self.cancel_pings()
+        ping_service = getattr(self, '_pings', None)
+        if ping_service is not None and not ping_service.stop():
+            with self._lock:
+                self._release_pending=False
+                self._state=TunState.ERROR
+            return {'success':False,'error':'Выход процесса TCP-замера не подтверждён. Защита сохранена.'}
         # No protected-route query may survive removal of the route/policy.
         service = getattr(self, '_diagnostics', None)
         if service is not None and not service.stop():
@@ -457,6 +465,8 @@ class ProxyTunBridgeApi:
             "username": p.username,
             "tag": p.tag,
             "latency_ms": p.latency_ms,
+            "latency_mode": p.latency_mode,
+            "last_status": p.last_status,
             "country": p.country,
             "city": p.city,
             "country_code": p.get_country_code(),
@@ -646,6 +656,7 @@ class ProxyTunBridgeApi:
                 target = "start"
 
             self.cancel_diagnostics()
+            self.cancel_pings()
             self._ip_gen += 1
             self.current_system_ip = {"ip": "IP после подключения" if target == "start" else "Туннель отключён", "country_code": "", "status": "unavailable"}
             self._op_generation=getattr(self,'_op_generation',0)+1
@@ -715,6 +726,7 @@ class ProxyTunBridgeApi:
                 return {"success": False, "busy": True}
 
             changed = (proxy_id != self.selected_proxy_id)
+            if changed: self.cancel_pings()
             self.selected_proxy_id = proxy_id
             sel = self._get_selected_proxy()
 
@@ -897,60 +909,72 @@ class ProxyTunBridgeApi:
 
         return {"success": True, "count": len(items)}
 
-    def ping_proxy(self, proxy_id: str) -> Dict[str, Any]:
-        if self._protection.state != "unarmed":
-            return {"success": False, "error": "Фоновые прямые проверки отключены при защите"}
+    def _ping_context(self):
+        context, mode, _ = self._diagnostic_context()
+        return context + (self.selected_proxy_id,), 'tun' if mode == 'protected' else ('direct' if mode == 'proxy' else None)
 
-        """Быстрый замер задержки конкретного сервера и доопределение гео при необходимости."""
+    def _ping_valid(self, context):
         with self._lock:
-            target_proxy = next((p for p in self.proxies if p.id == proxy_id), None)
+            current, mode = self._ping_context()
+            return (mode is not None and current[:-2] == context[:-2]
+                    and current[-2] is context[-2] and current[-1] == context[-1]
+                    and current[2] is context[2])
 
-        if target_proxy:
-            lat = quick_ping_proxy(target_proxy, timeout=2.5)
-            # Если страна не определена, запустим доопределение
-            if not target_proxy.country or target_proxy.get_country_code() == "PX":
-                self._geo_pool.submit(self._resolve_single_proxy_async, target_proxy.id)
-            with self._lock:
-                try:
-                    self._save()
-                except Exception as e:
-                    import logging
-                    logging.getLogger("ProxyTUN").warning("Ошибка сохранения задержки: %s", e)
-            return {"success": True, "latency": lat}
+    def cancel_pings(self):
+        service = getattr(self, '_pings', None)
+        if service is not None: service.cancel()
 
-        return {"success": False, "latency": None}
+    def _measure_pings(self, proxy_id=None):
+        with self._lock:
+            context, mode = self._ping_context()
+            if mode is None:
+                return {'success':False,'error':'TCP-замер доступен при здоровом TUN или снятой защите и остановленном ядре.'}
+            originals = [p for p in self.proxies if proxy_id is None or p.id == proxy_id]
+            if not originals: return {'success':False,'error':'Сервер не найден'}
+            targets=[]
+            for item in originals:
+                host=item.host
+                if mode == 'tun' and self._protection.cache_hosts.get(item.id) == host:
+                    cached=self._protection.cache.get(item.id)
+                    if cached:
+                        import ipaddress
+                        try: host=str(ipaddress.ip_address(cached))
+                        except ValueError: pass
+                targets.append({'id':item.id,'host':host,'port':item.port,'protocol':item.protocol})
+            if not hasattr(self, '_pings'): self._pings=PingService(self._ping_valid)
+            service=self._pings
+        # Process/socket waits must never hold the bridge lock.
+        result=service.run(context,targets,mode)
+        with self._lock:
+            if not self._ping_valid(context):
+                return {'success':False,'error':'Состояние подключения изменилось. Повторите замер.'}
+            if not result.get('success'): return result
+            by_id={p.id:p for p in originals}
+            if proxy_id is not None and not any(p is originals[0] for p in self.proxies):
+                return {'success':False,'error':'Сервер изменён или удалён. Повторите замер.'}
+            for row in result['results']:
+                original=by_id.get(row['id'])
+                current=next((p for p in self.proxies if p.id==row['id']),None)
+                if current is original:
+                    current.latency_ms=row['latency']
+                    current.latency_mode='tun' if mode=='tun' else 'tcp'
+                    current.last_status='alive' if row['status']=='alive' else ('dead' if row['status']=='timeout' else 'unknown')
+                else:
+                    row.update(latency=None,status='notchecked')
+            try: self._save()
+            except Exception: pass  # Measurement remains useful if local storage is unavailable.
+            response=dict(result)
+            response['proxies']=[self._proxy_to_dict(p) for p in self.proxies]
+            if proxy_id is not None:
+                row=next((r for r in result['results'] if r['id']==proxy_id),{})
+                response.update(latency=row.get('latency'),status=row.get('status','notchecked'))
+            return response
+
+    def ping_proxy(self, proxy_id: str) -> Dict[str, Any]:
+        return self._measure_pings(proxy_id)
 
     def ping_all(self) -> Dict[str, Any]:
-        if self._protection.state != "unarmed":
-            return {"success": False, "error": "Фоновые прямые проверки отключены при защите"}
-
-        """Параллельный замер задержки всех серверов с доопределением неизвестных гео."""
-        with self._lock:
-            proxies_copy = list(self.proxies)
-
-        def _ping_and_geo(p):
-            lat = quick_ping_proxy(p, timeout=2.5)
-            if not p.country or p.get_country_code() == "PX":
-                c, cc, city = resolve_host_geo(p.host, timeout=2.0)
-                if c or cc != "PX":
-                    p.country = c
-                    p.country_code = cc if cc != "PX" else ""
-                    p.city = city
-            return lat
-
-        with ThreadPoolExecutor(max_workers=8) as executor:
-            list(executor.map(_ping_and_geo, proxies_copy))
-
-        with self._lock:
-            try:
-                self._save()
-            except Exception as e:
-                import logging
-                logging.getLogger("ProxyTUN").warning("Ошибка сохранения после ping_all: %s", e)
-            return {
-                "success": True,
-                "proxies": [self._proxy_to_dict(p) for p in self.proxies]
-            }
+        return self._measure_pings()
 
     def refresh_system_ip(self) -> Dict[str, Any]:
         """Принудительное обновление внешнего IP."""
@@ -1016,6 +1040,7 @@ class ProxyTunBridgeApi:
 
     def shutdown(self):
         self.cancel_diagnostics()
+        self.cancel_pings()
         """Гарантированная остановка сетевой службы при закрытии приложения."""
         with self._lock:
             self._protection.cancel.set()
@@ -1023,6 +1048,8 @@ class ProxyTunBridgeApi:
             self._op_generation=getattr(self,'_op_generation',0)+1
         service = getattr(self, '_diagnostics', None)
         if service is not None: service.stop()
+        ping_service = getattr(self, '_pings', None)
+        if ping_service is not None: ping_service.stop()
         self._journal.clear()
         if hasattr(self, "_geo_pool"):
             try:

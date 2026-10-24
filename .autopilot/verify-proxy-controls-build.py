@@ -32,7 +32,7 @@ def main():
         verified.append(relative)
     pyz_key=next(name for name in archive.toc if name.endswith('PYZ.pyz'))
     pyz=archive.open_embedded_archive(pyz_key)
-    for module in ('gui.app_webview','core.diagnostics','core.version'):
+    for module in ('gui.app_webview','core.diagnostics','core.version','core.ping_service','core.proxy_model'):
         source=ROOT/(module.replace('.','/')+'.py')
         expected=compile(source.read_bytes(),str(source),'exec',optimize=0)
         assert fingerprint(pyz.extract(module))==fingerprint(expected), module+' bytecode differs'

@@ -1,0 +1,42 @@
+[
+  {
+    "antipattern": "bounce-easing",
+    "name": "Bounce or elastic easing",
+    "description": "Bounce and elastic easing feel dated and tacky. Real objects decelerate smoothly — use exponential easing (ease-out-quart/quint/expo) instead.",
+    "severity": "warning",
+    "category": "slop",
+    "file": "D:\\Projects\\KROTTUN\\gui\\web\\index.html",
+    "line": 308,
+    "snippet": "cubic-bezier(0.34, 1.45, 0.64, 1)"
+  },
+  {
+    "antipattern": "bounce-easing",
+    "name": "Bounce or elastic easing",
+    "description": "Bounce and elastic easing feel dated and tacky. Real objects decelerate smoothly — use exponential easing (ease-out-quart/quint/expo) instead.",
+    "severity": "warning",
+    "category": "slop",
+    "file": "D:\\Projects\\KROTTUN\\gui\\web\\index.html",
+    "line": 1015,
+    "snippet": "cubic-bezier(0.34, 1.56, 0.64, 1)"
+  },
+  {
+    "antipattern": "codex-grid-background",
+    "name": "Decorative grid-line background",
+    "description": "A decorative grid or line-field background drawn with hairline linear-gradient layers tiled by a fixed pixel cell is a recurring generated-UI signature. Reserve grid overlays for actual canvas, map, blueprint, or measurement surfaces; elsewhere use product structure or a plain surface.",
+    "severity": "advisory",
+    "category": "slop",
+    "file": "D:\\Projects\\KROTTUN\\gui\\web\\index.html",
+    "line": 31,
+    "snippet": "px-tiled hairline line-field background"
+  },
+  {
+    "antipattern": "dark-glow",
+    "name": "Glowing shadow accents",
+    "description": "Colored glow shadows — a zero-offset chromatic halo (box- or text-shadow) on any background, or any colored blurred shadow on a dark background — are the default \"cool\" look of AI-generated UIs. Use neutral elevation shadows and subtle, purposeful lighting instead.",
+    "severity": "warning",
+    "category": "slop",
+    "file": "D:\\Projects\\KROTTUN\\gui\\web\\index.html",
+    "line": 226,
+    "snippet": "Colored box-shadow glow (#1560d2) on dark page"
+  }
+]
