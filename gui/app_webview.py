@@ -95,6 +95,8 @@ class ProxyTunBridgeApi:
         self.selected_proxy_id: Optional[str] = self.proxies[0].id if self.proxies else None
         self.settings: Dict[str, Any] = load_settings()
         self.settings["bypass_telegram"] = False
+        self._session_candidates = ()
+        self._session_cursor = 0
 
         self.is_admin = is_admin()
         self.connected_since: Optional[float] = None
@@ -351,16 +353,16 @@ class ProxyTunBridgeApi:
                             failures = 0 if reachable else failures+1
                             retry = not reachable
                 if retry and not self._closing and self._state == TunState.RUNNING:
-                    current = self._sb.active_proxy.id if self._sb.active_proxy else None
                     with self._lock:
                         if self._closing or self._state != TunState.RUNNING or getattr(self,'_release_pending',False) or self._protection.cancel.is_set():
                             continue
-                        candidates = [p for p in self.proxies if p.id != current]
+                        candidates = self._remaining_session_candidates()
                         self._state = TunState.STARTING
                         self._ip_gen += 1
                         self.current_system_ip = {"ip": "Переключение сервера…", "country_code": "", "status": "unavailable"}
                     success = self._protection.connect(candidates)
                     with self._lock:
+                        self._finish_session_attempt(success)
                         if getattr(self,'_release_pending',False) or self._closing:
                             continue
                         self._state = TunState.RUNNING if success else TunState.ERROR
@@ -408,6 +410,78 @@ class ProxyTunBridgeApi:
         return self.proxies[0] if self.proxies else None
 
     # ================= JS API METHODS =================
+
+    def _fallback_ids(self):
+        """Missing key preserves legacy order; an explicitly empty list stays empty."""
+        available = {p.id for p in self.proxies}
+        stored = self.settings.get('fallback_proxy_ids', [p.id for p in self.proxies])
+        result = []
+        for proxy_id in stored if isinstance(stored, list) else []:
+            if isinstance(proxy_id, str) and proxy_id in available and proxy_id not in result:
+                result.append(proxy_id)
+        return result
+
+    def _snapshot_session(self, primary, generation):
+        """Called under _lock once per manual start; never reads saved data on retry."""
+        by_id = {p.id: p for p in self.proxies}
+        ids = [primary.id] + [item for item in self._fallback_ids() if item != primary.id]
+        self._session_candidates = tuple(replace(by_id[item]) for item in ids)
+        self._session_cursor = 0
+        self._session_generation = generation
+
+    def _remaining_session_candidates(self):
+        queue = getattr(self, '_session_candidates', ())
+        cursor = getattr(self, '_session_cursor', 0)
+        return tuple(replace(item) for item in queue[cursor:])
+
+    def _finish_session_attempt(self, success):
+        queue = getattr(self, '_session_candidates', ())
+        cursor = getattr(self, '_session_cursor', 0)
+        if success:
+            # ProtectionSession resolves the whole initial queue before arming.
+            # Keep those numeric endpoints in the session: editing saved hostnames
+            # correctly invalidates its cache, but must not disable this session.
+            import ipaddress
+            cache = getattr(self._protection, 'cache', {})
+            hosts = getattr(self._protection, 'cache_hosts', {})
+            frozen = []
+            for item in queue:
+                address = cache.get(item.id) if isinstance(cache, dict) else None
+                bound_host = hosts.get(item.id) if isinstance(hosts, dict) else None
+                if bound_host == item.host.rstrip('.').casefold() and isinstance(address, str):
+                    try:
+                        item = replace(item, host=str(ipaddress.ip_address(address)))
+                    except ValueError:
+                        pass
+                frozen.append(item)
+            queue = self._session_candidates = tuple(frozen)
+        active_id = self._sb.active_proxy.id if success and self._sb.active_proxy else None
+        # Every candidate preceding the successful one has already failed.
+        self._session_cursor = next((i + 1 for i in range(cursor, len(queue))
+                                     if queue[i].id == active_id), len(queue))
+
+    def get_fallbacks(self) -> Dict[str, Any]:
+        with self._lock:
+            return {'success': True, 'fallback_proxy_ids': self._fallback_ids(),
+                    'proxies': [self._proxy_to_dict(p) for p in self.proxies],
+                    'applies_next_connection': self._state in (TunState.RUNNING, TunState.STARTING)}
+
+    def set_fallbacks(self, proxy_ids) -> Dict[str, Any]:
+        with self._lock:
+            if self._closing or getattr(self, '_release_pending', False):
+                return {'success': False, 'busy': True, 'error': 'Операция завершения уже выполняется.'}
+            available = {p.id for p in self.proxies}
+            if (not isinstance(proxy_ids, list) or
+                    any(not isinstance(item, str) or item not in available for item in proxy_ids) or
+                    len(set(proxy_ids)) != len(proxy_ids)):
+                return {'success': False, 'error': 'Некорректный список резервов. Откройте его заново.'}
+            ordered = list(proxy_ids)
+            try:
+                save_setting('fallback_proxy_ids', ordered)
+            except Exception:
+                return {'success': False, 'error': 'Не удалось сохранить резервы. Повторите попытку.'}
+            self.settings['fallback_proxy_ids'] = ordered
+            return {'success': True, 'fallback_proxy_ids': list(ordered)}
 
     def get_state(self) -> Dict[str, Any]:
         """Возвращает полное состояние системы в JS (мгновенно, без ожидания сетевых операций)."""
@@ -514,6 +588,8 @@ class ProxyTunBridgeApi:
             self._ip_gen += 1
             self.current_system_ip = {"ip": "IP после подключения" if target == "start" else "Туннель отключён", "country_code": "", "status": "unavailable"}
             self._op_generation=getattr(self,'_op_generation',0)+1
+            if target == 'start':
+                self._snapshot_session(sel, self._op_generation)
             threading.Thread(target=self._do_toggle, args=(target,self._op_generation), daemon=True).start()
             return {"success": True, "state": self._state}
 
@@ -524,27 +600,29 @@ class ProxyTunBridgeApi:
                 if self._closing or getattr(self,'_release_pending',False) or (generation is not None and generation!=getattr(self,'_op_generation',0)):
                     return
                 sel = self._get_selected_proxy()
-                if target == "start" and not sel:
-                    self._state = TunState.ERROR
-                    self._last_error = "Список серверов пуст. Выберите или добавьте прокси!"
-                    self._error_seq += 1
-                    return
-                bypass_tg = bool(self.settings.get("bypass_telegram", False))
+                if target == 'start' and (not hasattr(self, '_session_generation') or
+                                          self._session_generation != generation):
+                    if not sel:
+                        self._state = TunState.ERROR
+                        self._last_error = "Список серверов пуст. Выберите или добавьте прокси!"
+                        self._error_seq += 1
+                        return
+                    self._snapshot_session(sel, generation)
 
             try:
                 if target == "start":
-                    if sel:
-                        with self._lock:
-                            candidates = [sel] + [p for p in self.proxies if p.id != sel.id]
-                        success = self._protection.connect(candidates)
-                        with self._lock:
-                            if getattr(self,'_release_pending',False) or self._closing:
-                                return
-                            self.connected_since = time.time() if success else None
-                            self._probe_fail_count = 0
-                            self._state = TunState.RUNNING if success else TunState.ERROR
-                            self._last_error = None if success else "Интернет заблокирован: серверы недоступны"
-                            if not success: self._error_seq += 1
+                    with self._lock:
+                        candidates = self._remaining_session_candidates()
+                    success = self._protection.connect(candidates)
+                    with self._lock:
+                        self._finish_session_attempt(success)
+                        if getattr(self,'_release_pending',False) or self._closing:
+                            return
+                        self.connected_since = time.time() if success else None
+                        self._probe_fail_count = 0
+                        self._state = TunState.RUNNING if success else TunState.ERROR
+                        self._last_error = None if success else "Интернет заблокирован: серверы недоступны"
+                        if not success: self._error_seq += 1
                 else:
                     self._protection.stop()
                     with self._lock:
@@ -583,6 +661,7 @@ class ProxyTunBridgeApi:
                 self._protection.cancel.clear()
                 self._state = TunState.STARTING
                 self._op_generation=getattr(self,'_op_generation',0)+1
+                self._snapshot_session(sel, self._op_generation)
                 threading.Thread(target=self._do_toggle, args=("start",self._op_generation), daemon=True).start()
 
             return {"success": True, "selected_proxy": self._proxy_to_dict(sel)}

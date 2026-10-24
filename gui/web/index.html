@@ -903,6 +903,18 @@
       font-weight: 800;
       margin-bottom: 14px;
     }
+    .fallback-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      padding: 10px 0;
+      border-bottom: 1px solid rgba(59, 130, 246, 0.2);
+    }
+    .fallback-row label { display: flex; align-items: center; gap: 8px; min-width: 0; font-size: 12px; }
+    .fallback-row label span { overflow-wrap: anywhere; }
+    .fallback-order { display: flex; gap: 4px; flex-shrink: 0; }
+    .fallback-order button:disabled { opacity: 0.35; cursor: default; }
     .form-group {
       margin-bottom: 12px;
     }
@@ -1256,6 +1268,7 @@
       <div class="servers-list" id="serversListContainer">
         <!-- Rendered dynamically -->
       </div>
+      <button class="header-action-btn" style="margin-top: 10px; align-self: flex-start;" onclick="openFallbackModal()">Резервы — порядок переключения</button>
     </div>
 
     <!-- ================= 3. VIEW INFO ================= -->
@@ -1313,6 +1326,21 @@
   <div class="toast" id="toastBox">Уведомление</div>
 
   <!-- Modal: Add Proxy -->
+  <div class="modal-overlay" id="modalFallbacks">
+    <div class="modal-card" role="dialog" aria-modal="true" aria-labelledby="fallbackTitle">
+      <div class="modal-title" id="fallbackTitle">Резервы</div>
+      <div class="form-label" id="fallbackPrimary"></div>
+      <p class="form-label" id="fallbackNotice">Применится при следующем подключении</p>
+      <div id="fallbackRows"></div>
+      <p class="form-label" id="fallbackEmpty"></p>
+      <p class="form-label" id="fallbackError" role="status"></p>
+      <div class="modal-actions">
+        <button class="action-btn btn-secondary" onclick="closeModals()">Отмена</button>
+        <button class="action-btn btn-primary" id="saveFallbackButton" onclick="saveFallbacks()">Сохранить</button>
+      </div>
+    </div>
+  </div>
+
   <div class="modal-overlay" id="modalAdd">
     <div class="modal-card">
       <div class="modal-title" id="proxyFormTitle">Добавить прокси сервер</div>
@@ -2011,6 +2039,90 @@
     }
 
     // Modal helpers
+    let fallbackDraft = [], fallbackProxies = [], fallbackPrimaryId = null;
+    let fallbackModalGeneration = 0, fallbackSaving = false;
+    async function openFallbackModal() {
+      if (fallbackSaving) return;
+      closeModals();
+      const generation = fallbackModalGeneration;
+      fallbackDraft = []; fallbackProxies = [];
+      fallbackPrimaryId = selectedProxy ? selectedProxy.id : null;
+      document.getElementById('fallbackPrimary').textContent = selectedProxy ? 'Основной (всегда первый): ' + (selectedProxy.tag || selectedProxy.host) : 'Основной сервер не выбран';
+      document.getElementById('fallbackNotice').textContent = 'Применится при следующем подключении. Текущая очередь не изменится.';
+      document.getElementById('fallbackRows').replaceChildren();
+      document.getElementById('fallbackEmpty').textContent = 'Загрузка…';
+      document.getElementById('fallbackError').textContent = '';
+      document.getElementById('saveFallbackButton').disabled = true;
+      document.getElementById('modalFallbacks').classList.add('open');
+      try {
+        const result = await window.pywebview.api.get_fallbacks();
+        if (generation !== fallbackModalGeneration) return;
+        if (!result.success) throw new Error('unavailable');
+        fallbackProxies = result.proxies;
+        fallbackDraft = result.fallback_proxy_ids.filter(id => id !== fallbackPrimaryId);
+        renderFallbacks();
+        document.getElementById('saveFallbackButton').disabled = false;
+      } catch (_) {
+        if (generation === fallbackModalGeneration) {
+          document.getElementById('fallbackEmpty').textContent = '';
+          document.getElementById('fallbackError').textContent = 'Не удалось загрузить резервы. Откройте окно заново.';
+        }
+      }
+    }
+    function renderFallbacks() {
+      const list = document.getElementById('fallbackRows');
+      list.replaceChildren();
+      const ids = [...fallbackDraft, ...fallbackProxies.map(p => p.id).filter(id => id !== fallbackPrimaryId && !fallbackDraft.includes(id))];
+      ids.forEach(id => {
+        const proxy = fallbackProxies.find(p => p.id === id);
+        if (!proxy) return;
+        const index = fallbackDraft.indexOf(id), included = index >= 0;
+        const row = document.createElement('div'); row.className = 'fallback-row';
+        const label = document.createElement('label');
+        const check = document.createElement('input'); check.type = 'checkbox'; check.checked = included;
+        check.disabled = fallbackSaving;
+        check.onchange = () => {
+          fallbackDraft = check.checked ? [...fallbackDraft, id] : fallbackDraft.filter(item => item !== id);
+          renderFallbacks();
+        };
+        const name = document.createElement('span');
+        name.textContent = (included ? (index + 1) + '. ' : '') + (proxy.tag || proxy.host + ':' + proxy.port);
+        label.appendChild(check); label.appendChild(name); row.appendChild(label);
+        const order = document.createElement('div'); order.className = 'fallback-order';
+        [-1, 1].forEach(direction => {
+          const button = document.createElement('button'); button.className = 'header-action-btn';
+          button.textContent = direction < 0 ? '↑' : '↓';
+          button.setAttribute('aria-label', (direction < 0 ? 'Поднять ' : 'Опустить ') + (proxy.tag || proxy.host));
+          button.disabled = fallbackSaving || !included || index + direction < 0 || index + direction >= fallbackDraft.length;
+          button.onclick = () => {
+            if (button.disabled) return;
+            [fallbackDraft[index], fallbackDraft[index + direction]] = [fallbackDraft[index + direction], fallbackDraft[index]];
+            renderFallbacks();
+          };
+          order.appendChild(button);
+        });
+        row.appendChild(order); list.appendChild(row);
+      });
+      document.getElementById('fallbackEmpty').textContent = fallbackDraft.length ? 'Резервы пробуются сверху вниз, каждый один раз.' : 'Без резервов: при отказе основного сервера интернет останется заблокирован.';
+    }
+    async function saveFallbacks() {
+      if (fallbackSaving || document.getElementById('saveFallbackButton').disabled) return;
+      const generation = fallbackModalGeneration;
+      fallbackSaving = true;
+      document.getElementById('saveFallbackButton').disabled = true;
+      renderFallbacks();
+      try {
+        const result = await window.pywebview.api.set_fallbacks([...fallbackDraft]);
+        if (generation !== fallbackModalGeneration) return;
+        if (result.success) { closeModals(); showToast('Резервы сохранены. Применятся при следующем подключении'); }
+        else document.getElementById('fallbackError').textContent = result.error || 'Не удалось сохранить резервы. Повторите попытку.';
+      } catch (_) {
+        if (generation === fallbackModalGeneration) document.getElementById('fallbackError').textContent = 'Не удалось сохранить резервы. Повторите попытку.';
+      } finally {
+        fallbackSaving = false;
+        if (generation === fallbackModalGeneration) { document.getElementById('saveFallbackButton').disabled = false; renderFallbacks(); }
+      }
+    }
     let editingProxyId = null;
     let proxyFormGeneration = 0;
     function openAddModal() {
@@ -2049,6 +2161,8 @@
       document.getElementById('modalImport').classList.add('open');
     }
     function closeModals() {
+      fallbackModalGeneration++;
+      document.getElementById('modalFallbacks').classList.remove('open');
       proxyFormGeneration++;
       editingProxyId = null;
       document.getElementById('addPass').value = '';
