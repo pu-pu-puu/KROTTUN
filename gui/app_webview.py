@@ -3,6 +3,7 @@ import sys
 import time
 import threading
 import subprocess
+from dataclasses import replace
 from ctypes import wintypes
 from typing import Dict, Any, List, Optional, Tuple
 from concurrent.futures import ThreadPoolExecutor
@@ -168,6 +169,7 @@ class ProxyTunBridgeApi:
             if not p:
                 return
             host = p.host
+            original = p
 
         c, cc, city = resolve_host_geo(host, timeout=3.0)
         if self._closing:
@@ -177,7 +179,7 @@ class ProxyTunBridgeApi:
             if self._closing:
                 return
             p = next((x for x in self.proxies if x.id == proxy_id), None)
-            if p and (c or (cc and cc != "PX")):
+            if p is original and p.host == host and self._protection.state == 'unarmed' and (c or (cc and cc != "PX")):
                 p.country = c
                 p.country_code = cc if cc != "PX" else ""
                 p.city = city
@@ -203,6 +205,7 @@ class ProxyTunBridgeApi:
                 if not p:
                     return
                 host = p.host
+                original = p
             c, cc, city = resolve_host_geo(host, timeout=3.0)
             if self._closing:
                 return
@@ -210,7 +213,7 @@ class ProxyTunBridgeApi:
                 if self._closing:
                     return
                 p = next((x for x in self.proxies if x.id == pid), None)
-                if p and (c or (cc and cc != "PX")):
+                if p is original and p.host == host and self._protection.state == 'unarmed' and (c or (cc and cc != "PX")):
                     p.country = c
                     p.country_code = cc if cc != "PX" else ""
                     p.city = city
@@ -390,6 +393,7 @@ class ProxyTunBridgeApi:
             "port": p.port,
             "protocol": p.protocol,
             "username": p.username,
+            "tag": p.tag,
             "latency_ms": p.latency_ms,
             "country": p.country,
             "city": p.city,
@@ -602,6 +606,62 @@ class ProxyTunBridgeApi:
                 "proxies": [self._proxy_to_dict(p) for p in self.proxies],
                 "selected_proxy": self._proxy_to_dict(sel)
             }
+
+    def edit_proxy(self, proxy_id, host, port, protocol, username='', password=None,
+                   tag='', clear_password=False) -> Dict[str, Any]:
+        """Replace the saved record; a running session keeps its original snapshot."""
+        import ipaddress
+        import re
+        if not all(isinstance(value, str) for value in (proxy_id, host, protocol, username, tag)) or not (
+                password is None or isinstance(password, str)) or type(clear_password) is not bool:
+            return {"success": False, "error": "Некорректные поля сервера."}
+        host = host.strip()
+        valid_host = False
+        try:
+            ipaddress.ip_address(host)
+            valid_host = '%' not in host
+        except ValueError:
+            try:
+                ascii_host = host.encode('idna').decode('ascii').rstrip('.')
+                valid_host = len(ascii_host) <= 253 and all(
+                    re.fullmatch(r'[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?', label)
+                    for label in ascii_host.split('.'))
+            except UnicodeError:
+                pass
+        if not valid_host:
+            return {"success": False, "error": "Укажите корректный хост или IP."}
+        if type(port) not in (str, int) or len(str(port)) > 5 or not re.fullmatch(r'[0-9]+', str(port)) or not 1 <= int(port) <= 65535:
+            return {"success": False, "error": "Порт должен быть в диапазоне 1-65535."}
+        protocol = protocol.strip().lower()
+        if protocol not in ('socks5', 'http'):
+            return {"success": False, "error": "Выберите SOCKS5 или HTTP."}
+        with self._lock:
+            if self._closing or getattr(self, '_release_pending', False) or self._state in (TunState.STARTING, TunState.STOPPING):
+                return {"success": False, "busy": True, "error": "Дождитесь завершения текущей операции."}
+            old = next((p for p in self.proxies if p.id == proxy_id), None)
+            if old is None:
+                return {"success": False, "error": "Сервер не найден."}
+            item = replace(old, host=host, port=int(port), protocol=protocol,
+                           username=username or None, tag=tag or f'{host}:{port}',
+                           password=None if clear_password else (password if password else old.password))
+            changed = (item.host, item.port, item.protocol, item.username, item.password) != (
+                old.host, old.port, old.protocol, old.username, old.password)
+            if changed:
+                item.country = item.country_code = item.city = ''
+                item.latency_ms = None
+                item.last_status = 'unknown'
+            previous = self.proxies
+            self.proxies = [item if p is old else p for p in previous]
+            try:
+                self._save()
+            except Exception:
+                self.proxies = previous
+                return {"success": False, "error": "Не удалось сохранить сервер. Повторите попытку."}
+            if changed:
+                self._protection.cache.pop(proxy_id, None)
+                self._protection.cache_hosts.pop(proxy_id, None)
+            return {"success": True, "proxies": [self._proxy_to_dict(p) for p in self.proxies],
+                    "selected_proxy": self._proxy_to_dict(self._get_selected_proxy())}
 
     def add_proxy(self, host: str, port: int, protocol: str, username: str = "", password: str = "") -> Dict[str, Any]:
         """Добавление нового прокси с валидацией, автоопределением гео и защитой явного выбора протокола (R4)."""

@@ -677,6 +677,7 @@
 
     .item-left {
       display: flex;
+      min-width: 0;
       align-items: center;
       gap: 10px;
     }
@@ -736,6 +737,7 @@
     }
     .item-info {
       display: flex;
+      min-width: 0;
       flex-direction: column;
     }
     .item-title-row {
@@ -744,11 +746,17 @@
       gap: 6px;
     }
     .item-name {
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
       font-size: 12px;
       font-weight: 700;
       color: #ffffff;
     }
     .item-sub {
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
       font-size: 10px;
       font-family: Consolas, monospace;
       color: #8ba2d4;
@@ -757,6 +765,7 @@
 
     .item-right {
       display: flex;
+      flex-shrink: 0;
       align-items: center;
       gap: 6px;
     }
@@ -881,6 +890,8 @@
     }
     .modal-card {
       width: 420px;
+      max-height: calc(100vh - 40px);
+      overflow-y: auto;
       padding: 20px;
       background: #060e22;
       border: 1px solid rgba(28, 56, 115, 0.6);
@@ -1304,7 +1315,12 @@
   <!-- Modal: Add Proxy -->
   <div class="modal-overlay" id="modalAdd">
     <div class="modal-card">
-      <div class="modal-title"><svg class="ui-icon" data-icon="plus" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg> Добавить прокси сервер</div>
+      <div class="modal-title" id="proxyFormTitle">Добавить прокси сервер</div>
+      <div id="editNotice" class="form-label" hidden></div>
+      <div class="form-group" id="editTagGroup" hidden>
+        <label class="form-label" for="addTag">Название</label>
+        <input class="form-input" id="addTag" maxlength="200" />
+      </div>
       <div class="form-group">
         <label class="form-label">Хост / IP</label>
         <input class="form-input" id="addHost" placeholder="192.0.2.1 или proxy.example.com" />
@@ -1329,11 +1345,12 @@
       </div>
       <div class="form-group">
         <label class="form-label">Пароль (если есть)</label>
-        <input class="form-input" id="addPass" placeholder="e46x3A" type="password" />
+        <input class="form-input" id="addPass" placeholder="Пароль" type="password" autocomplete="new-password" />
+        <label class="form-label" id="clearPasswordGroup" hidden><input type="checkbox" id="clearPassword" /> Удалить сохранённый пароль</label>
       </div>
       <div class="modal-actions">
         <button class="action-btn btn-secondary" onclick="closeModals()">Отмена</button>
-        <button class="action-btn btn-primary" onclick="submitAddProxy()">Сохранить</button>
+        <button class="action-btn btn-primary" id="saveProxyButton" onclick="submitAddProxy()">Сохранить</button>
       </div>
     </div>
   </div>
@@ -1725,7 +1742,7 @@
         renderFlagBadge(codeEl, p.country_code, true);
       }
 
-      document.getElementById('cardServerName').textContent = p.location_name || 'Proxy Server';
+      document.getElementById('cardServerName').textContent = p.tag || p.location_name || 'Proxy Server';
       document.getElementById('cardServerHost').textContent = `${p.host}:${p.port}`;
 
       const b = document.getElementById('cardProtoBadge');
@@ -1781,7 +1798,7 @@
 
         const name = document.createElement('span');
         name.className = 'item-name';
-        name.innerText = p.location_name || `${p.host}:${p.port}`;
+        name.textContent = p.tag || p.location_name || `${p.host}:${p.port}`;
         titleRow.appendChild(name);
 
         const proto = document.createElement('span');
@@ -1817,6 +1834,14 @@
           copyServerRaw(p);
         };
         right.appendChild(btnCopy);
+
+        const btnEdit = document.createElement('button');
+        btnEdit.className = 'btn-item-action btn-copy';
+        btnEdit.textContent = 'Изм.';
+        btnEdit.setAttribute('aria-label', 'Редактировать сервер');
+        btnEdit.title = 'Редактировать сервер';
+        btnEdit.onclick = (e) => { e.stopPropagation(); openEditModal(p.id); };
+        right.appendChild(btnEdit);
 
         const btnDel = document.createElement('button');
         btnDel.className = 'btn-item-action btn-del';
@@ -1986,13 +2011,49 @@
     }
 
     // Modal helpers
+    let editingProxyId = null;
+    let proxyFormGeneration = 0;
     function openAddModal() {
+      if (isSubmittingForm) return;
+      closeModals();
+      editingProxyId = null;
+      document.getElementById('proxyFormTitle').textContent = 'Добавить прокси сервер';
+      document.getElementById('editTagGroup').hidden = true;
+      document.getElementById('clearPasswordGroup').hidden = true;
+      document.getElementById('editNotice').hidden = true;
+      ['addHost', 'addPort', 'addUser', 'addPass', 'addTag'].forEach(id => document.getElementById(id).value = '');
+      document.getElementById('addProto').value = 'socks5';
+      document.querySelector('#addProto option[value="auto"]').disabled = false;
+      document.getElementById('modalAdd').classList.add('open');
+    }
+    function openEditModal(id) {
+      if (isBusy || isSubmittingForm) return;
+      const p = proxyList.find(item => item.id === id);
+      if (!p) return;
+      closeModals();
+      editingProxyId = id;
+      document.getElementById('proxyFormTitle').textContent = 'Редактировать сервер';
+      document.getElementById('editTagGroup').hidden = false;
+      document.getElementById('clearPasswordGroup').hidden = false;
+      const notice = document.getElementById('editNotice');
+      notice.hidden = false;
+      notice.textContent = isConnected ? 'Применится при следующем подключении' : 'Пустой новый пароль сохранит прежний';
+      for (const [field, value] of [['addHost', p.host], ['addPort', p.port], ['addProto', p.protocol], ['addUser', p.username], ['addTag', p.tag]]) {
+        document.getElementById(field).value = String(value || '');
+      }
+      document.getElementById('addPass').placeholder = 'Пусто — сохранить прежний';
+      document.querySelector('#addProto option[value="auto"]').disabled = true;
       document.getElementById('modalAdd').classList.add('open');
     }
     function openImportModal() {
       document.getElementById('modalImport').classList.add('open');
     }
     function closeModals() {
+      proxyFormGeneration++;
+      editingProxyId = null;
+      document.getElementById('addPass').value = '';
+      document.getElementById('addPass').placeholder = 'Пароль';
+      document.getElementById('clearPassword').checked = false;
       document.getElementById('modalAdd').classList.remove('open');
       document.getElementById('modalImport').classList.remove('open');
       const delModal = document.getElementById('modalDelete');
@@ -2017,12 +2078,14 @@
     async function submitAddProxy() {
       if (isSubmittingForm) return;
       const host = document.getElementById('addHost').value.trim();
-      const port = parseInt(document.getElementById('addPort').value.trim());
+      const port = Number(document.getElementById('addPort').value.trim());
       const proto = document.getElementById('addProto').value;
       const user = document.getElementById('addUser').value.trim();
-      const pass = document.getElementById('addPass').value.trim();
+      const pass = document.getElementById('addPass').value;
+      const editId = editingProxyId;
+      const generation = proxyFormGeneration;
 
-      if (!host || !port) {
+      if (!host || !Number.isInteger(port) || port < 1 || port > 65535) {
         showToast('Укажите хост и порт');
         return;
       }
@@ -2030,16 +2093,24 @@
       if (window.pywebview) {
         try {
           isSubmittingForm = true;
-          const res = await window.pywebview.api.add_proxy(host, port, proto, user, pass);
+          document.getElementById('saveProxyButton').disabled = true;
+          const res = editId
+            ? await window.pywebview.api.edit_proxy(editId, host, port, proto, user, pass,
+                document.getElementById('addTag').value, document.getElementById('clearPassword').checked)
+            : await window.pywebview.api.add_proxy(host, port, proto, user, pass);
+          if (generation !== proxyFormGeneration) return;
           if (res && res.success) {
             closeModals();
             refreshState();
-            showToast('Прокси успешно добавлен');
+            showToast(editId ? 'Сервер сохранён' : 'Прокси успешно добавлен');
           } else {
             showToast(res && res.error ? res.error : 'Ошибка добавления');
           }
+        } catch (e) {
+          if (generation === proxyFormGeneration) showToast('Не удалось сохранить сервер. Повторите попытку.');
         } finally {
           isSubmittingForm = false;
+          document.getElementById('saveProxyButton').disabled = false;
         }
       }
     }
