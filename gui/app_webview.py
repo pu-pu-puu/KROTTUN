@@ -31,6 +31,7 @@ from core.storage import save_proxies, load_proxies, load_settings, save_setting
 from core.connection_log import ConnectionJournal, ConnectionSource
 from core.protection_session import ProtectionSession
 from core.win_job import bind_self_to_job
+from core.diagnostics import DiagnosticsService, system_proxy_flag
 
 
 class TunState:
@@ -135,6 +136,14 @@ class ProxyTunBridgeApi:
             self._protection.cancel.set()
             self._ip_gen += 1
             self.current_system_ip={"ip":"IP не проверен: защита снимается", "country_code":"", "status":"unavailable"}
+            self.cancel_diagnostics()
+        # No protected-route query may survive removal of the route/policy.
+        service = getattr(self, '_diagnostics', None)
+        if service is not None and not service.stop():
+            with self._lock:
+                self._release_pending = False
+                self._state = TunState.ERROR
+            return {"success": False, "error": "Выход процесса диагностики не подтверждён. Защита сохранена; повторите после завершения проверки."}
         with self._op_lock:
             try:
                 self._protection.release()
@@ -263,6 +272,57 @@ class ProxyTunBridgeApi:
             except Exception as e:
                 return {"success": False, "error": str(e)}
             return {"success": True}
+
+    def _diagnostic_context(self):
+        protection = self._protection
+        selected = next((p for p in self.proxies if p.id == self.selected_proxy_id), None)
+        mode = None
+        if not self._closing and not getattr(self, '_release_pending', False):
+            if (protection.state == 'protected' and self._state == TunState.RUNNING
+                    and not protection.cancel.is_set() and self._sb.is_running()
+                    and self._sb.proxy_reachable):
+                mode = 'protected'
+            elif (protection.state == 'unarmed' and self._state == TunState.IDLE
+                    and not self._sb.is_running() and selected is not None):
+                mode = 'proxy'
+        context = (self._ip_gen, protection.generation, self._sb.process, self._state,
+                   protection.state, protection.cancel.is_set(), self._closing,
+                   getattr(self, '_release_pending', False), mode,
+                   self.selected_proxy_id if mode == 'proxy' else None,
+                   selected if mode == 'proxy' else None)
+        return context, mode, selected
+
+    def _diagnostic_valid(self, context):
+        with self._lock:
+            current, mode, _ = self._diagnostic_context()
+            return (mode is not None and current[:-1] == context[:-1]
+                    and current[-1] is context[-1] and current[2] is context[2])
+
+    def start_diagnostics(self):
+        with self._lock:
+            if not hasattr(self, '_diagnostics'):
+                self._diagnostics = DiagnosticsService(self._diagnostic_valid)
+            context, mode, selected = self._diagnostic_context()
+            result = self._diagnostics.start(context, mode,
+                replace(selected) if mode == 'proxy' else None, system_proxy_flag())
+            if result.get('success'): self._diagnostic_run_context = context
+            return result
+
+    def get_diagnostics(self):
+        with self._lock:
+            service = getattr(self, '_diagnostics', None)
+        if service:
+            with self._lock:
+                context = getattr(self, '_diagnostic_run_context', None)
+                current, _, _ = self._diagnostic_context()
+                return service.snapshot(valid=context is not None and current[:-1] == context[:-1]
+                    and current[-1] is context[-1] and current[2] is context[2])
+        return {'run_id': None, 'status': 'idle', 'checks': []}
+
+    def cancel_diagnostics(self):
+        service = getattr(self, '_diagnostics', None)
+        if service: service.cancel()
+        return {'success': True}
 
     def _ip_context(self):
         if self._closing:
@@ -585,6 +645,7 @@ class ProxyTunBridgeApi:
                 self._state = TunState.STARTING
                 target = "start"
 
+            self.cancel_diagnostics()
             self._ip_gen += 1
             self.current_system_ip = {"ip": "IP после подключения" if target == "start" else "Туннель отключён", "country_code": "", "status": "unavailable"}
             self._op_generation=getattr(self,'_op_generation',0)+1
@@ -954,11 +1015,14 @@ class ProxyTunBridgeApi:
         return {"success": False, "error": "Прямые исключения отключены в защищённом режиме", "bypass_telegram": False}
 
     def shutdown(self):
+        self.cancel_diagnostics()
         """Гарантированная остановка сетевой службы при закрытии приложения."""
         with self._lock:
             self._protection.cancel.set()
             self._closing = True
             self._op_generation=getattr(self,'_op_generation',0)+1
+        service = getattr(self, '_diagnostics', None)
+        if service is not None: service.stop()
         self._journal.clear()
         if hasattr(self, "_geo_pool"):
             try:

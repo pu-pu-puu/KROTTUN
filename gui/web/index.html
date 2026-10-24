@@ -573,6 +573,12 @@
       margin: 10px 0;
     }
 
+    .diagnostic-row { padding: 10px 0; border-bottom: 1px solid var(--border-color, rgba(255,255,255,.1)); }
+    .diagnostic-row strong { font-size: 13px; }
+    .diagnostic-row p { margin: 5px 0 0; font-size: 12px; line-height: 1.5; opacity: .8; overflow-wrap: anywhere; }
+    .diagnostic-row[data-status="pass"] strong { color: #82d9b0; }
+    .diagnostic-row[data-status="fail"] strong { color: #f4a0a0; }
+    .diagnostic-row[data-status="warning"] strong { color: #eac78b; }
     .server-actions {
       display: flex;
       gap: 8px;
@@ -1251,6 +1257,7 @@
             <span><svg class="ui-icon" data-icon="pulse" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 12h5l3-8 4 16 3-8h5"/></svg></span> Проверить пинг
           </button>
         </div>
+        <button class="header-action-btn" id="btnDiagnostics" style="margin-top: 10px" onclick="openDiagnostics()">Диагностика подключения</button>
       </div>
     </div>
 
@@ -1326,6 +1333,15 @@
   <div class="toast" id="toastBox">Уведомление</div>
 
   <!-- Modal: Add Proxy -->
+  <div class="modal-overlay" id="modalDiagnostics">
+    <div class="modal-card" role="dialog" aria-modal="true" aria-labelledby="diagnosticTitle">
+      <h3 class="modal-title" id="diagnosticTitle">Диагностика подключения</h3>
+      <p class="form-label" id="diagnosticStatus" role="status">Проверка…</p>
+      <div id="diagnosticRows" aria-live="polite"></div>
+      <p class="form-label">Проверка не изменяет подключение и настройки Windows. Результаты не доказывают отсутствие утечек.</p>
+      <div class="modal-actions"><button class="action-btn btn-secondary" onclick="closeModals()">Закрыть</button></div>
+    </div>
+  </div>
   <div class="modal-overlay" id="modalFallbacks">
     <div class="modal-card" role="dialog" aria-modal="true" aria-labelledby="fallbackTitle">
       <div class="modal-title" id="fallbackTitle">Резервы</div>
@@ -2038,6 +2054,82 @@
       document.getElementById('ipValue').innerText = `${ipData.ip || 'Unknown'}${code}`;
     }
 
+    let diagnosticGeneration = 0, diagnosticTimer = null, diagnosticDeadline = null;
+    let diagnosticOpen = false, diagnosticRunId = null, diagnosticBusy = false;
+    const diagnosticLabels = {proxy:'Прокси / туннель',dns:'DNS',https:'HTTPS',ip:'Внешний IP',system_proxy:'Системный прокси Windows'};
+    const diagnosticStates = {running:'Проверка',pass:'Готово',fail:'Ошибка',warning:'Внимание',skipped:'Пропущено'};
+    function renderDiagnostics(checks) {
+      const list = document.getElementById('diagnosticRows'); list.replaceChildren();
+      Object.entries(diagnosticLabels).forEach(([id, label]) => {
+        const check = (Array.isArray(checks) ? checks : []).find(item => item.id === id) || {};
+        const state = Object.hasOwn(diagnosticStates, check.status) ? check.status : 'skipped';
+        const row = document.createElement('div'); row.className = 'diagnostic-row'; row.dataset.status = state;
+        const title = document.createElement('strong');
+        title.textContent = (check.label || label) + ' · ' + diagnosticStates[state];
+        const detail = document.createElement('p'); detail.textContent = check.detail || 'Ожидание результата';
+        row.append(title, detail); list.appendChild(row);
+      });
+    }
+    function stopDiagnosticPolling() {
+      diagnosticGeneration++; diagnosticOpen = false; diagnosticBusy = false;
+      clearTimeout(diagnosticTimer); clearTimeout(diagnosticDeadline);
+      diagnosticTimer = diagnosticDeadline = null;
+      diagnosticRunId = null;
+    }
+    function diagnosticFailure(message) {
+      document.getElementById('diagnosticStatus').textContent = message;
+      renderDiagnostics(Object.keys(diagnosticLabels).map(id => ({id,status:'skipped',detail:message})));
+      stopDiagnosticPolling();
+      try { Promise.resolve(window.pywebview.api.cancel_diagnostics()).catch(() => {}); } catch (_) {}
+    }
+    let diagnosticRpcPending = false;
+    async function diagnosticRpc(method) {
+      if (diagnosticRpcPending) throw new Error('busy');
+      diagnosticRpcPending = true;
+      try { return await window.pywebview.api[method](); }
+      finally { diagnosticRpcPending = false; }
+    }
+    async function openDiagnostics() {
+      if (diagnosticOpen) return;
+      closeModals(); diagnosticOpen = true;
+      const generation = diagnosticGeneration;
+      document.getElementById('modalDiagnostics').classList.add('open');
+      document.getElementById('diagnosticStatus').textContent = 'Проверяем подключение…';
+      renderDiagnostics(Object.keys(diagnosticLabels).map(id => ({id,status:'running',detail:'Выполняется проверка…'})));
+      diagnosticDeadline = setTimeout(() => {
+        if (generation === diagnosticGeneration) diagnosticFailure('Время проверки истекло. Повторите диагностику; таймаут не доказывает утечку.');
+      }, 12000);
+      try {
+        const result = await diagnosticRpc('start_diagnostics');
+        if (generation !== diagnosticGeneration) return;
+        if (!result || !result.success || !result.run_id) {
+          diagnosticFailure(result && result.busy ? 'Предыдущая проверка ещё завершается. Повторите позже.' : 'Не удалось запустить диагностику. Повторите попытку.'); return;
+        }
+        diagnosticRunId = result.run_id;
+        pollDiagnostics(generation);
+      } catch (_) {
+        if (generation === diagnosticGeneration) diagnosticFailure('Нет ответа от приложения. Повторите диагностику.');
+      }
+    }
+    async function pollDiagnostics(generation) {
+      if (!diagnosticOpen || diagnosticBusy || generation !== diagnosticGeneration) return;
+      diagnosticBusy = true;
+      try {
+        const data = await diagnosticRpc('get_diagnostics');
+        if (generation !== diagnosticGeneration) return;
+        if (!data || data.run_id !== diagnosticRunId) { diagnosticFailure('Результат устарел. Запустите проверку снова.'); return; }
+        renderDiagnostics(data.checks);
+        if (data.status !== 'running') {
+          document.getElementById('diagnosticStatus').textContent = data.status === 'cancelled' ? 'Подключение изменилось. Запустите проверку снова.' : 'Проверка завершена';
+          stopDiagnosticPolling(); return;
+        }
+      } catch (_) {
+        if (generation === diagnosticGeneration) diagnosticFailure('Не удалось получить результат. Повторите диагностику.');
+        return;
+      } finally { if (generation === diagnosticGeneration) diagnosticBusy = false; }
+      if (generation === diagnosticGeneration && diagnosticOpen) diagnosticTimer = setTimeout(() => pollDiagnostics(generation), 200);
+    }
+
     // Modal helpers
     let fallbackDraft = [], fallbackProxies = [], fallbackPrimaryId = null;
     let fallbackModalGeneration = 0, fallbackSaving = false;
@@ -2161,6 +2253,12 @@
       document.getElementById('modalImport').classList.add('open');
     }
     function closeModals() {
+      const wasDiagnosing = diagnosticOpen;
+      stopDiagnosticPolling();
+      document.getElementById('modalDiagnostics').classList.remove('open');
+      if (wasDiagnosing) {
+        try { Promise.resolve(window.pywebview.api.cancel_diagnostics()).catch(() => {}); } catch (_) {}
+      }
       fallbackModalGeneration++;
       document.getElementById('modalFallbacks').classList.remove('open');
       proxyFormGeneration++;
