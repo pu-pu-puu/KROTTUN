@@ -251,7 +251,7 @@ class ConfigTests(unittest.TestCase):
             child.poll.return_value=None
             child.stdin=io.BytesIO()
             return child
-        with patch('core.singbox_manager.is_admin',return_value=True),patch('core.singbox_manager.subprocess.Popen',side_effect=process):
+        with patch('core.singbox_manager.is_admin',return_value=True),patch('core.singbox_manager.subprocess.Popen',side_effect=process),patch('core.singbox_manager.bind_to_lifetime',return_value=True):
             manager.start(ProxyItem('one','203.0.113.1',1080))
             manager.start(ProxyItem('two','203.0.113.2',1080))
         confirmed_stop()

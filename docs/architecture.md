@@ -12,6 +12,26 @@ Fallback configuration is an ordered list of proxy IDs in settings. A missing ke
 
 The bridge serializes lifecycle operations separately from short state snapshots. `core/protection_session.py` coordinates the protected route policy and tunnel start/stop; `core/singbox_manager.py` owns the sing-box process and TUN runtime; `core/wfp_native.py` implements native Windows Filtering Platform operations. State/generation checks fence asynchronous work as lifecycle state changes. Protection persists through stop, error, and ordinary exit. Releasing it is explicit: stop the core and any diagnostic child, confirm process exit, then remove only KROTTUN policy. See the recovery and limitations section of `README.md` before network work; tests and this architecture note do not establish leak-prevention readiness.
 
+Application startup requires successful lifetime Job assignment before bridge construction.
+The manager also checks exact Job membership for sing-box before sending configuration.
+Failure stops the owned core and fails the connection attempt. DNS flush is best effort
+with a two-second wait and a half-second kill confirmation. If exit is unconfirmed,
+the manager retains the subprocess and refuses lifecycle completion or a second flush
+until exit can be observed.
+
+## External IP process boundary
+
+`core/ip_worker.py` runs the IP query in a single owned spawn child. The request
+gate opens only after lifetime Job binding and a fresh bridge context check.
+The parent allows three seconds including startup, followed by bounded termination
+and kill confirmation; the bridge retains its four-second UI deadline. The request
+ignores environment proxies, rejects redirects, and streams at most 1024 bytes.
+Cancellation, stale generations and process identity prevent publication. An
+unconfirmed child exit retains its handle and blocks another query, explicit
+protection release, and normal tunnel teardown during shutdown. This process
+boundary also bounds DNS lookup and slow streaming responses that socket read
+timeouts alone cannot bound.
+
 ## Diagnostics process boundary
 
 `core/diagnostics.py` owns fixed diagnostic checks and runs transport requests in a separate spawned child, independent of manager health probes. The bridge accepts diagnostics only in a supported state: a healthy protected TUN, or an explicitly selected proxy while protection is unarmed and the core is idle. Protected mode sends no proxy endpoint or credentials; unarmed mode sends a copied selected record only. Direct-network fallback is forbidden. Requests disable inherited environment proxy settings, use fixed HTTPS/DoH targets, reject redirects, bound reads and time, and return only categorical results plus a validated public IP.

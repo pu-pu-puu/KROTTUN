@@ -156,12 +156,35 @@ class SingBoxManager:
                 raise IntegrityError(f"Целостность бинарника {fname} нарушена — запуск отменён!")
 
     def flush_dns(self):
-        """Сбрасывает системный кэш DNS Windows через System32."""
+        """Best effort flush, with bounded waits and retained process ownership."""
+        pending = getattr(self, '_dns_process', None)
+        if pending is not None:
+            self._finish_dns_flush(pending)
+            return
         try:
             flags = subprocess.CREATE_NO_WINDOW if os.name == 'nt' else 0
-            subprocess.run([sys_exe("ipconfig.exe"), "/flushdns"], capture_output=True, creationflags=flags)
+            process = subprocess.Popen([sys_exe("ipconfig.exe"), "/flushdns"],
+                stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, creationflags=flags)
+        except Exception:
+            return
+        self._dns_process = process
+        try:
+            process.wait(timeout=2.0)
+        except Exception:
+            self._finish_dns_flush(process)
+        else:
+            self._dns_process = None
+
+    def _finish_dns_flush(self, process):
+        try:
+            if process.poll() is None:
+                process.kill()
+                process.wait(timeout=.5)
         except Exception:
             pass
+        if process.poll() is None:
+            raise RuntimeError("DNS flush did not exit; protection retained")
+        self._dns_process = None
 
     def generate_config(self, proxy: ProxyItem, bypass_telegram: bool = False) -> dict:
         """
@@ -599,6 +622,11 @@ class SingBoxManager:
             startupinfo=si
         )
         self.process = p
+
+        # No configuration (and thus no TUN) until exact lifetime Job membership.
+        if not bind_to_lifetime(p):
+            self.stop()
+            raise RuntimeError("Не удалось привязать sing-box к Windows Job")
 
         # Передаем конфигурацию в stdin и закрываем поток
         try:

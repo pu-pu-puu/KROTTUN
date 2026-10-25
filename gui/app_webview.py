@@ -21,7 +21,6 @@ from core.paths import sys_exe
 from core.version import APP_VERSION
 from core.admin_utils import is_admin
 from core.ip_service import (
-    get_current_system_ip,
     quick_ping_proxy,
     test_proxy,
     resolve_host_geo,
@@ -33,6 +32,7 @@ from core.protection_session import ProtectionSession
 from core.win_job import bind_self_to_job
 from core.diagnostics import DiagnosticsService, system_proxy_flag
 from core.ping_service import PingService
+from core.ip_worker import IpQueryService
 
 
 class TunState:
@@ -139,6 +139,13 @@ class ProxyTunBridgeApi:
             self.current_system_ip={"ip":"IP не проверен: защита снимается", "country_code":"", "status":"unavailable"}
             self.cancel_diagnostics()
             self.cancel_pings()
+            ip_service = getattr(self, '_ip_service', None)
+            if ip_service is not None: ip_service.cancel()
+        if ip_service is not None and not ip_service.stop():
+            with self._lock:
+                self._release_pending = False
+                self._state = TunState.ERROR
+            return {'success': False, 'error': 'Выход процесса проверки IP не подтверждён. Защита сохранена.'}
         ping_service = getattr(self, '_pings', None)
         if ping_service is not None and not ping_service.stop():
             with self._lock:
@@ -313,7 +320,20 @@ class ProxyTunBridgeApi:
             context, mode, selected = self._diagnostic_context()
             result = self._diagnostics.start(context, mode,
                 replace(selected) if mode == 'proxy' else None, system_proxy_flag())
-            if result.get('success'): self._diagnostic_run_context = context
+            if result.get('success'):
+                self._diagnostic_run_context = context
+                reason = None
+                if mode is None:
+                    reason = 'unavailable'
+                    if not self._closing and not getattr(self, '_release_pending', False):
+                        if self._protection.state == 'unknown':
+                            reason = 'protection_unknown'
+                        elif self._state in (TunState.IDLE, TunState.ERROR) and not self._sb.is_running():
+                            if self._protection.state == 'blocked':
+                                reason = 'protection_blocked'
+                            elif self._protection.state == 'unarmed' and selected is None:
+                                reason = 'no_proxy'
+                self._diagnostic_availability_reason = reason
             return result
 
     def get_diagnostics(self):
@@ -323,8 +343,12 @@ class ProxyTunBridgeApi:
             with self._lock:
                 context = getattr(self, '_diagnostic_run_context', None)
                 current, _, _ = self._diagnostic_context()
-                return service.snapshot(valid=context is not None and current[:-1] == context[:-1]
+                valid = (context is not None and current[:-1] == context[:-1]
                     and current[-1] is context[-1] and current[2] is context[2])
+                data = service.snapshot(valid=valid)
+                data['availability_reason'] = (getattr(self, '_diagnostic_availability_reason', None)
+                    if valid and data.get('status') == 'done' else None)
+                return data
         return {'run_id': None, 'status': 'idle', 'checks': []}
 
     def cancel_diagnostics(self):
@@ -363,12 +387,16 @@ class ProxyTunBridgeApi:
             self._ip_pending = True
             self._ip_pending_context = context
             self._ip_retry = False
+            if not hasattr(self, '_ip_service'):
+                self._ip_service = IpQueryService(self._ip_query_valid)
+            service = self._ip_service
             self.current_system_ip = {"ip": "Проверка IP…", "country_code": "", "status": "checking"}
 
         def expire():
             with self._lock:
                 if self._ip_pending and generation == self._ip_gen:
                     self._ip_gen += 1  # Late query cannot publish after deadline.
+                    service.cancel()
                     self.current_system_ip = {"ip": "IP недоступен: время проверки истекло", "country_code": "", "status": "unavailable"}
         timer = threading.Timer(4.0, expire)
         timer.daemon = True
@@ -380,7 +408,7 @@ class ProxyTunBridgeApi:
                     if generation != self._ip_gen or context != self._ip_context():
                         return
                 try:
-                    data = get_current_system_ip(timeout=3.0)
+                    data = service.run((generation, context), timeout=3.0)
                 except Exception:
                     data = {"ip": "IP недоступен", "country_code": "", "status": "unavailable"}
                 with self._lock:
@@ -396,6 +424,11 @@ class ProxyTunBridgeApi:
                 if retry:
                     self._refresh_ip_async()
         threading.Thread(target=worker, daemon=True).start()
+
+    def _ip_query_valid(self, query):
+        generation, context = query
+        with self._lock:
+            return generation == self._ip_gen and context == self._ip_context()
 
     def _watchdog_loop(self):
         next_probe = time.monotonic() + 30
@@ -561,6 +594,7 @@ class ProxyTunBridgeApi:
             is_run = (self._state == TunState.RUNNING and self._sb.is_running())
 
             return {
+                "app_version": APP_VERSION,
                 "is_running": is_run,
                 "state": self._state,
                 "proxy_reachable": self._sb.proxy_reachable,
@@ -1056,6 +1090,9 @@ class ProxyTunBridgeApi:
         if service is not None: service.stop()
         ping_service = getattr(self, '_pings', None)
         if ping_service is not None: ping_service.stop()
+        ip_service = getattr(self, '_ip_service', None)
+        if ip_service is not None and not ip_service.stop():
+            raise RuntimeError('IP worker exit unconfirmed; tunnel and protection retained')
         self._journal.clear()
         if hasattr(self, "_geo_pool"):
             try:
@@ -1100,10 +1137,10 @@ def start_app():
             pass
         sys.exit(0)
 
-    # Привязываем сам процесс к Windows Job Object (все дочерние процессы закрываются с ним)
-    bind_self_to_job()
-
     try:
+        # Do not construct a bridge capable of starting the core without containment.
+        if not bind_self_to_job():
+            raise RuntimeError("Не удалось установить контроль завершения процессов Windows Job")
         api = ProxyTunBridgeApi()
     except Exception as e:
         import logging

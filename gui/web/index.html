@@ -573,6 +573,54 @@
       margin: 10px 0;
     }
 
+    .diag-utility {
+      display: flex;
+      width: 100%;
+      flex: 0 0 auto;
+      align-items: center;
+      text-align: left;
+      gap: 12px;
+      margin-top: 12px;
+      padding: 13px 15px;
+      background: rgba(7, 21, 51, .92);
+      border: 1px solid #254c85;
+      border-radius: 12px;
+      color: #cde5ff;
+      cursor: pointer;
+      font-family: "Segoe UI", sans-serif;
+    }
+    .diag-utility:hover { border-color: #69a9ef; background: #0c2a5b; }
+    .diag-utility:focus-visible { outline: 2px solid #a4d4ff; outline-offset: 3px; }
+    .diag-utility-icon {
+      display: grid;
+      place-items: center;
+      color: #8bc9ff;
+      width: 32px;
+      height: 32px;
+      background: #113263;
+      border-radius: 8px;
+      flex-shrink: 0;
+    }
+    .diag-utility-copy { display: flex; flex: 1; flex-direction: column; gap: 3px; }
+    .diag-utility strong { font-size: 12px; font-weight: 700; }
+    .diag-utility small { font-size: 10px; color: #99bae6; }
+
+    #modalDiagnostics [hidden] { display: none; }
+    .blocked-banner { padding: 13px; background: #1c2331; border: 1px solid #6e5c35; border-radius: 12px; margin-bottom: 14px; }
+    .blocked-banner-head { display: flex; gap: 8px; align-items: center; color: #f1d295; }
+    .blocked-banner-head svg { width: 20px; height: 22px; flex-shrink: 0; }
+    .blocked-banner strong { font-size: 12px; line-height: 1.5; }
+    .blocked-banner p { font-size: 11px; line-height: 1.65; color: #c2d2e9; margin: 7px 0 0; }
+    .blocked-banner[data-reason="protection_unknown"], .blocked-banner[data-reason="no_proxy"], .blocked-banner[data-reason="unavailable"] { background: #0d203a; border-color: #3a5f8d; }
+    .blocked-banner:not([data-reason="protection_blocked"]) .blocked-banner-head { color: #b7d7ff; }
+    #modalDiagnostics .diagnostic-compact .diagnostic-row { display: flex; justify-content: space-between; gap: 12px; padding: 10px 0; border-bottom: 1px solid #233551; }
+    #modalDiagnostics .diagnostic-compact .diagnostic-row strong { font-size: 12px; font-weight: 400; line-height: 1.45; color: #d8e5f9; }
+    #modalDiagnostics .diagnostic-compact .diagnostic-row p { font-size: 11px; line-height: 1.45; color: #a8bedc; margin: 0; text-align: right; opacity: 1; }
+    #modalDiagnostics .diagnostic-compact .diagnostic-row[data-status="warning"] p { color: #efd296; }
+    #modalDiagnostics .diagnostic-compact .diagnostic-row:last-child { border-bottom: 0; }
+    .diagnostic-compact #diagnosticFootnote { font-size: 10px; font-weight: 400; line-height: 1.6; color: #9bb4d9; margin-top: 14px; padding-top: 11px; border-top: 1px solid #233551; }
+    .diagnostic-compact .modal-actions button { font: 700 12px "Segoe UI", sans-serif; padding: 10px 8px; border-radius: 10px; }
+    #modalDiagnostics button:focus-visible { outline: 2px solid #9fd0ff; outline-offset: 3px; }
     .diagnostic-row { padding: 10px 0; border-bottom: 1px solid var(--border-color, rgba(255,255,255,.1)); }
     .diagnostic-row strong { font-size: 13px; }
     .diagnostic-row p { margin: 5px 0 0; font-size: 12px; line-height: 1.5; opacity: .8; overflow-wrap: anywhere; }
@@ -694,7 +742,7 @@
       width: 14px;
       height: 14px;
       border-radius: 50%;
-      border: 1.5px solid #8ba2d4;
+      border: 1px solid #8ba2d4;
       display: flex;
       align-items: center;
       justify-content: center;
@@ -706,8 +754,9 @@
       border-color: #00c566;
     }
     .radio-dot {
-      width: 7px;
-      height: 7px;
+      flex: none;
+      width: 6px;
+      height: 6px;
       border-radius: 50%;
     }
     .radio-dot.selected {
@@ -812,34 +861,28 @@
       color: #ffffff;
     }
 
-    /* Info / UAC View */
-    .info-card {
-      padding: 16px;
-      margin-bottom: 10px;
-    }
-    .info-title {
-      font-size: 13px;
-      font-weight: 800;
-      margin-bottom: 10px;
-      display: flex;
-      align-items: center;
-      gap: 8px;
-    }
-    .info-row {
-      display: flex;
-      justify-content: space-between;
-      font-size: 12px;
-      padding: 6px 0;
-      border-bottom: 1px solid rgba(32, 66, 124, 0.4);
-    }
-    .info-label {
-      color: #8ba2d4;
-    }
-    .info-val {
-      font-family: Consolas, monospace;
-      font-weight: 700;
-      color: #ffffff;
-    }
+    /* Info / UAC: approved passport layout */
+#viewInfo{padding-right:2px;gap:10px;color:#e3efff;}
+#viewInfo svg{width:18px;height:18px;flex-shrink:0;color:#94ccff;}
+#viewInfo h2,#viewInfo h3,#viewInfo p{margin:0;}
+.about-panel{padding:16px;background:rgba(7,18,46,.94);border:1px solid #25416e;border-radius:15px;flex-shrink:0;}
+.about-head{display:flex;align-items:center;justify-content:space-between;gap:12px;}
+.about-brand{font-size:22px;letter-spacing:-.4px;font-weight:800;}
+.about-version{font:700 12px Consolas,monospace;color:#c1ddff;background:#102d5c;border:1px solid #365f96;border-radius:7px;padding:5px 8px;white-space:nowrap;}
+.about-description{font-size:11px;line-height:1.6;color:#9bb9e4;margin-top:7px!important;}
+.about-heading{display:flex;gap:8px;align-items:center;font-size:13px;font-weight:750;margin-bottom:10px!important;}
+.about-rows{margin:0;}
+.about-row{display:flex;align-items:center;justify-content:space-between;gap:15px;min-height:32px;font-size:12px;line-height:1.4;border-bottom:1px solid #1d365e;padding:6px 0;}
+.about-row:last-child{border-bottom:0;}
+.about-row dt{color:#a6bee3;flex-shrink:0;}
+.about-row dd{margin:0;text-align:right;color:#e0edff;font-weight:650;}
+.about-row small{display:block;font-size:10px;color:#a6bee3;margin-top:2px;font-weight:400;}
+.about-ok{color:#76ddbc!important;}
+.about-note{padding:12px 14px;background:rgba(12,31,65,.95);border:1px solid #355983;border-radius:12px;flex-shrink:0;}
+.about-note strong{display:flex;align-items:center;gap:7px;font-size:11px;margin-bottom:5px;}
+.about-note p{font-size:11px;line-height:1.6;color:#b0c8e9;}
+.about-note svg{width:15px!important;height:15px!important;}
+.about-rule-note{font-size:10px;line-height:1.5;color:#a8c3e8;margin-top:9px!important;}
 
     /* Modern iOS/macOS Switch Toggle */
     .ios-switch {
@@ -1266,8 +1309,12 @@
             <span><svg class="ui-icon" data-icon="pulse" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 12h5l3-8 4 16 3-8h5"/></svg></span> Проверить пинг
           </button>
         </div>
-        <button class="header-action-btn" id="btnDiagnostics" style="margin-top: 10px" onclick="openDiagnostics()">Диагностика подключения</button>
       </div>
+      <button class="diag-utility" id="btnDiagnostics" type="button" onclick="openDiagnostics()">
+        <span class="diag-utility-icon"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 12h4l3-7 4 14 3-7h4"/><path d="M3 4v3m0 10v3M21 4v3m0 10v3"/></svg></span>
+        <span class="diag-utility-copy"><strong>Диагностика подключения</strong><small>DNS · HTTPS · Внешний IP</small></span>
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m9 5 7 7-7 7"/></svg>
+      </button>
     </div>
 
     <!-- ================= 2. VIEW SERVERS ================= -->
@@ -1288,53 +1335,7 @@
     </div>
 
     <!-- ================= 3. VIEW INFO ================= -->
-    <div class="view-content hidden" id="viewInfo">
-      <div class="glass-card info-card">
-        <div class="info-title">
-          <span><svg class="ui-icon" data-icon="shield" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3 4 6v6c0 5 8 9 8 9s8-4 8-9V6l-8-3Z"/><path d="m8 12 3 3 5-6"/></svg> Права Администратора</span>
-        </div>
-        <div class="info-row">
-          <span class="info-label">Статус:</span>
-          <span class="info-val" id="infoAdminStatus" style="color: #34d399;">Активны (TUN готов к работе)</span>
-        </div>
-      </div>
-
-      <div class="glass-card info-card">
-        <div class="info-title">
-          <span><svg class="ui-icon" data-icon="gear" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m9 3-.7 3-2 .9-2.7-.8-2 3.5L4 11.7v2.6l-2.4 2.1 2 3.5 2.7-.8 2 .9.7 3h4l.7-3 2-.9 2.7.8 2-3.5-2.4-2.1v-2.6l2.4-2.1-2-3.5-2.7.8-2-.9L13 3Z" transform="translate(1 -1) scale(.94)"/><circle cx="12" cy="12" r="3"/></svg> Ядро Маршрутизации</span>
-        </div>
-        <div class="info-row">
-          <span class="info-label">Движок:</span>
-          <span class="info-val">sing-box (L3 TUN Core via stdin)</span>
-        </div>
-        <div class="info-row">
-          <span class="info-label">Драйвер:</span>
-          <span class="info-val">Wintun Driver v0.14</span>
-        </div>
-        <div class="info-row">
-          <span class="info-label">Службы обхода:</span>
-          <span class="info-val" style="color: #34d399;">Прямой доступ (127.0.0.1 / ag_dns)</span>
-        </div>
-        <div class="info-row">
-          <span class="info-label">DNS:</span>
-          <span class="info-val">1.1.1.1 (Detour via Proxy)</span>
-        </div>
-      </div>
-
-      <div class="glass-card info-card">
-        <div class="info-title">
-          <span><svg class="ui-icon" data-icon="network" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="3" width="6" height="5" rx="1"/><rect x="2" y="16" width="6" height="5" rx="1"/><rect x="16" y="16" width="6" height="5" rx="1"/><path d="M12 8v4M5 16v-4h14v4"/></svg> Сетевые опции и совместимость</span>
-        </div>
-        <div class="info-row" style="cursor: pointer;" onclick="toggleBypassTelegram()" title="Нажмите для переключения маршрутизации Telegram">
-          <span class="info-label">Маршрутизация Telegram:</span>
-          <span class="info-val" id="infoBypassTelegram" style="color: #38bdf8;">Через прокси (TUN)</span>
-        </div>
-        <div class="info-row">
-          <span class="info-label">Защита от утечек:</span>
-          <span class="info-val" style="color: #f59e0b;">Режим совместимости: возможны LAN DNS / IPv6 утечки</span>
-        </div>
-      </div>
-    </div>
+    <div class="view-content hidden" id="viewInfo"><section class="about-panel"><div class="about-head"><h2 class="about-brand">KROTTUN</h2><span class="about-version" id="infoAppVersion">Версия недоступна</span></div><p class="about-description">Windows · sing-box · Wintun 0.14</p><dl class="about-rows"><div class="about-row"><dt>Права администратора</dt><dd id="infoAdminStatus">Нет данных</dd></div><div class="about-row"><dt>Соединение</dt><dd id="infoConnectionStatus">Нет данных о подключении</dd></div></dl></section><section class="about-panel"><h3 class="about-heading"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="5" cy="6" r="2"/><circle cx="19" cy="18" r="2"/><path d="M7 6h8a4 4 0 0 1 0 8H9a4 4 0 0 0 0 8h6"/></svg>Правила защищённого подключения</h3><dl class="about-rows"><div class="about-row"><dt>Telegram</dt><dd >Через TUN<small>Прямые исключения отключены</small></dd></div><div class="about-row"><dt>DNS</dt><dd >Через прокси<small>DoH · резерв TCP DNS</small></dd></div><div class="about-row"><dt>IPv6 и UDP</dt><dd >Отклоняются правилами</dd></div></dl><p class="about-rule-note">Это правила режима. Текущее состояние защиты показано выше.</p></section><aside class="about-note"><strong><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 11v6M12 7v.1"/></svg>О проверках безопасности</strong><p>Состояние защиты не является проверкой на утечки. Полная проверка IPv4, IPv6 и DNS в изолированной Windows VM ещё не завершена.</p></aside></div>
 
   </div>
 
@@ -1345,10 +1346,14 @@
   <div class="modal-overlay" id="modalDiagnostics">
     <div class="modal-card" role="dialog" aria-modal="true" aria-labelledby="diagnosticTitle">
       <h3 class="modal-title" id="diagnosticTitle">Диагностика подключения</h3>
+      <section class="blocked-banner" id="diagnosticAvailability" role="status" hidden>
+        <div class="blocked-banner-head"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m12 3 8 3v6c0 5-8 9-8 9s-8-4-8-9V6Z"/><rect x="9" y="10" width="6" height="6" rx="1"/><path d="M10 10V8a2 2 0 0 1 4 0v2"/></svg><strong id="diagnosticAvailabilityTitle"></strong></div>
+        <p id="diagnosticAvailabilityDetail"></p>
+      </section>
       <p class="form-label" id="diagnosticStatus" role="status">Проверка…</p>
       <div id="diagnosticRows" aria-live="polite"></div>
-      <p class="form-label">Проверка не изменяет подключение и настройки Windows. Результаты не доказывают отсутствие утечек.</p>
-      <div class="modal-actions"><button class="action-btn btn-secondary" onclick="closeModals()">Закрыть</button></div>
+      <p class="form-label" id="diagnosticFootnote">Проверка не изменяет подключение и настройки Windows. Результаты не доказывают отсутствие утечек.</p>
+      <div class="modal-actions"><button class="action-btn btn-secondary" type="button" onclick="closeModals()">Закрыть</button><button class="action-btn btn-primary" id="diagnosticHome" type="button" onclick="diagnosticGoHome()" hidden>К подключению</button></div>
     </div>
   </div>
   <div class="modal-overlay" id="modalFallbacks">
@@ -2100,15 +2105,50 @@
     let diagnosticOpen = false, diagnosticRunId = null, diagnosticBusy = false;
     const diagnosticLabels = {proxy:'Прокси / туннель',dns:'DNS',https:'HTTPS',ip:'Внешний IP',system_proxy:'Системный прокси Windows'};
     const diagnosticStates = {running:'Проверка',pass:'Готово',fail:'Ошибка',warning:'Внимание',skipped:'Пропущено'};
-    function renderDiagnostics(checks) {
+    function resetDiagnosticAvailability() {
+      document.querySelector('#modalDiagnostics .modal-card').classList.remove('diagnostic-compact');
+      document.getElementById('diagnosticAvailability').hidden = true;
+      document.getElementById('diagnosticHome').hidden = true;
+      document.getElementById('diagnosticStatus').hidden = false;
+      document.getElementById('diagnosticFootnote').textContent = 'Проверка не изменяет подключение и настройки Windows. Результаты не доказывают отсутствие утечек.';
+    }
+    function diagnosticGoHome() {
+      const target = document.getElementById('diagnosticAvailability').dataset.reason === 'no_proxy' ? 'servers' : 'home';
+      closeModals(); switchTab(target);
+    }
+    function showDiagnosticAvailability(data) {
+      const messages = {
+        protection_blocked: ['Интернет заблокирован защитой', 'Прокси отключён. Защита Windows блокирует прямой доступ в интернет. Подключите прокси, чтобы выполнить диагностику.', 'К подключению'],
+        protection_unknown: ['Состояние защиты неизвестно', 'Не удалось определить состояние защиты. Сетевые проверки не запускались. Вернитесь на главную и дождитесь обновления статуса.', 'На главную'],
+        no_proxy: ['Сервер не выбран', 'Защита снята, но сервер для проверки не выбран. Выберите сервер во вкладке «Серверы» и повторите диагностику.', 'Выбрать сервер'],
+        unavailable: ['Диагностика сейчас недоступна', 'Сетевые проверки не запускались. Дождитесь завершения подключения или отключения и повторите диагностику.', 'На главную']
+      };
+      const reason = data.availability_reason;
+      const skipped = ['proxy','dns','https','ip'].every(id => Array.isArray(data.checks) && data.checks.some(c => c.id === id && c.status === 'skipped'));
+      if (data.status !== 'done' || !skipped || !Object.hasOwn(messages, reason)) return false;
+      const [title, detail, action] = messages[reason];
+      const banner = document.getElementById('diagnosticAvailability');
+      banner.dataset.reason = reason; banner.hidden = false;
+      document.getElementById('diagnosticAvailabilityTitle').textContent = title;
+      document.getElementById('diagnosticAvailabilityDetail').textContent = detail;
+      document.getElementById('diagnosticStatus').hidden = true;
+      const button = document.getElementById('diagnosticHome');
+      button.textContent = action; button.hidden = false;
+      document.querySelector('#modalDiagnostics .modal-card').classList.add('diagnostic-compact');
+      document.getElementById('diagnosticFootnote').textContent = 'Открытие этого окна не меняет подключение и защиту.';
+      renderDiagnostics(data.checks, true);
+      return true;
+    }
+    function renderDiagnostics(checks, compact = false) {
       const list = document.getElementById('diagnosticRows'); list.replaceChildren();
       Object.entries(diagnosticLabels).forEach(([id, label]) => {
         const check = (Array.isArray(checks) ? checks : []).find(item => item.id === id) || {};
         const state = Object.hasOwn(diagnosticStates, check.status) ? check.status : 'skipped';
         const row = document.createElement('div'); row.className = 'diagnostic-row'; row.dataset.status = state;
         const title = document.createElement('strong');
-        title.textContent = (check.label || label) + ' · ' + diagnosticStates[state];
-        const detail = document.createElement('p'); detail.textContent = check.detail || 'Ожидание результата';
+        title.textContent = compact ? label : (check.label || label) + ' · ' + diagnosticStates[state];
+        const detail = document.createElement('p');
+        detail.textContent = compact ? (id !== 'system_proxy' ? 'Не выполнялась' : state === 'pass' ? 'Выключен' : state === 'warning' ? 'Включён · возможен конфликт с TUN' : 'Не удалось определить') : check.detail || 'Ожидание результата';
         row.append(title, detail); list.appendChild(row);
       });
     }
@@ -2119,6 +2159,7 @@
       diagnosticRunId = null;
     }
     function diagnosticFailure(message) {
+      resetDiagnosticAvailability();
       document.getElementById('diagnosticStatus').textContent = message;
       renderDiagnostics(Object.keys(diagnosticLabels).map(id => ({id,status:'skipped',detail:message})));
       stopDiagnosticPolling();
@@ -2134,6 +2175,7 @@
     async function openDiagnostics() {
       if (diagnosticOpen) return;
       closeModals(); diagnosticOpen = true;
+      resetDiagnosticAvailability();
       const generation = diagnosticGeneration;
       document.getElementById('modalDiagnostics').classList.add('open');
       document.getElementById('diagnosticStatus').textContent = 'Проверяем подключение…';
@@ -2160,6 +2202,8 @@
         const data = await diagnosticRpc('get_diagnostics');
         if (generation !== diagnosticGeneration) return;
         if (!data || data.run_id !== diagnosticRunId) { diagnosticFailure('Результат устарел. Запустите проверку снова.'); return; }
+        resetDiagnosticAvailability();
+        if (showDiagnosticAvailability(data)) { stopDiagnosticPolling(); return; }
         renderDiagnostics(data.checks);
         if (data.status !== 'running') {
           document.getElementById('diagnosticStatus').textContent = data.status === 'cancelled' ? 'Подключение изменилось. Запустите проверку снова.' : 'Проверка завершена';
@@ -2392,46 +2436,37 @@
       }
     }
 
-    let currentSettings = { bypass_telegram: false };
-
-    async function toggleBypassTelegram() {
-      if (!window.pywebview) return;
-      const curr = currentSettings.bypass_telegram === true;
-      const nextVal = !curr;
-      try {
-        const res = await window.pywebview.api.set_bypass_telegram(nextVal);
-        if (res && res.success) {
-          currentSettings.bypass_telegram = nextVal;
-          updateSettingsDisplay();
-          showToast(nextVal ? 'Telegram направлен напрямую (Direct - нужен MTProto)' : 'Telegram направлен через прокси (TUN)');
-        }
-      } catch (e) {}
-    }
-
-    function updateSettingsDisplay() {
-      const el = document.getElementById('infoBypassTelegram');
-      if (el) {
-        const en = currentSettings.bypass_telegram === true;
-        el.innerText = en ? 'Напрямую (Direct)' : 'Через прокси (TUN)';
-        el.style.color = en ? '#f59e0b' : '#38bdf8';
+    function updateInfoDisplay(s, full = false) {
+      if (full || Object.hasOwn(s, 'app_version')) {
+        const version = typeof s.app_version === 'string' ? s.app_version.trim() : '';
+        document.getElementById('infoAppVersion').textContent = version ? 'v' + version : 'Версия недоступна';
       }
+      if (full || Object.hasOwn(s, 'is_admin')) {
+        const admin = document.getElementById('infoAdminStatus');
+        admin.textContent = s.is_admin === true ? 'Права есть' : s.is_admin === false ? 'Нет прав' : 'Нет данных';
+        admin.classList.toggle('about-ok', s.is_admin === true);
+      }
+      const states = {starting:'Подключение…', stopping:'Отключение…', idle:'Туннель не подключён', error:'Ошибка подключения'};
+      let connection = states[s.state] || 'Нет данных о подключении';
+      if (s.state === 'running') {
+        connection = s.is_running === true && s.proxy_reachable === true ? 'Туннель работает' : 'Выход не подтверждён';
+      }
+      document.getElementById('infoConnectionStatus').textContent = connection;
     }
 
     // Sync state with Python Backend
     async function refreshState() {
       if (!window.pywebview) return;
-      const s = await window.pywebview.api.get_state();
-      if (!s) return;
+      let s;
+      try { s = await window.pywebview.api.get_state(); }
+      catch (_) { updateInfoDisplay({}, true); return; }
+      if (!s) { updateInfoDisplay({}, true); return; }
+      updateInfoDisplay(s, true);
 
       isConnected = s.is_running;
       activeProxy = s.active_proxy;
       selectedProxy = s.selected_proxy;
       proxyList = s.proxies || [];
-
-      if (s.settings) {
-        currentSettings = s.settings;
-        updateSettingsDisplay();
-      }
 
       if (isConnected) {
         applyToggleState('active', s.proxy_reachable);
@@ -2453,18 +2488,6 @@
       warning.textContent=s.network_warning || ''; warning.hidden=!s.network_warning;
       if (s.system_ip) {
         updateIpDisplay(s.system_ip);
-      }
-
-      // UAC
-      const uacEl = document.getElementById('infoAdminStatus');
-      if (uacEl) {
-        if (s.is_admin) {
-          uacEl.innerText = 'Активны (TUN готов к работе)';
-          uacEl.style.color = '#34d399';
-        } else {
-          uacEl.innerText = 'Требуются права Администратора!';
-          uacEl.style.color = '#f59e0b';
-        }
       }
 
       // Storage Error Banner (B4)
@@ -2546,9 +2569,11 @@
           if (t.system_ip && t.system_ip.ip) {
             updateIpDisplay(t.system_ip);
           }
+          updateInfoDisplay(t);
           applyBackendState(t);
-        }
+        } else { updateInfoDisplay({}); }
       } catch (e) {
+        updateInfoDisplay({});
       } finally {
         pollTelemetry.inFlight = false;
       }

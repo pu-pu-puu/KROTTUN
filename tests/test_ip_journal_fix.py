@@ -50,7 +50,9 @@ class IpRefreshTests(unittest.TestCase):
                 for _ in range(10): api._refresh_ip_async()
                 self.assertEqual(len(workers),1)
                 return {'ip':'203.0.113.88','status':'ready'}
-            with patch('gui.app_webview.get_current_system_ip',side_effect=delayed): workers[0]()
+            api._ip_service.run.side_effect=lambda *args, **kwargs: delayed(**kwargs)
+            workers[0]()
+            api._ip_service.cancel.assert_called_once()
         self.assertEqual(api.current_system_ip['status'],'unavailable')
         self.assertNotEqual(api.current_system_ip.get('ip'),'203.0.113.88')
 
@@ -63,11 +65,14 @@ class IpRefreshTests(unittest.TestCase):
         api._sb=Mock(proxy_reachable=True,process=object())
         api._sb.is_running.return_value=True
         api.current_system_ip={}
+        api._ip_service=Mock()
         return api
 
     def run_refresh(self,api,request):
         workers=[]
-        with patch('gui.app_webview.threading.Timer'),patch('gui.app_webview.threading.Thread',side_effect=lambda **kw:workers.append(kw['target']) or Mock()),patch('gui.app_webview.get_current_system_ip',side_effect=request) as query:
+        query=Mock(side_effect=lambda *args, **kwargs: request(**kwargs))
+        api._ip_service.run=query
+        with patch('gui.app_webview.threading.Timer'),patch('gui.app_webview.threading.Thread',side_effect=lambda **kw:workers.append(kw['target']) or Mock()):
             api._refresh_ip_async()
             for worker in workers: worker()
         return query
@@ -95,7 +100,7 @@ class IpRefreshTests(unittest.TestCase):
     def test_single_request_ignores_environment_and_windows_proxies(self):
         from core.ip_service import get_current_system_ip
         session=MagicMock(); response=session.get.return_value.__enter__.return_value
-        response.status_code=200; response.json.return_value={'ip':'203.0.113.5'}
+        response.status_code=200; response.iter_content.return_value=iter([b'{"ip":"203.0.113.5"}'])
         with patch('core.ip_service.requests.Session') as factory:
             factory.return_value.__enter__.return_value=session
             self.assertEqual(get_current_system_ip()['status'],'ready')

@@ -5,17 +5,26 @@ from typing import Dict, Any, Optional, Tuple
 from core.proxy_model import ProxyItem
 
 def get_current_system_ip(timeout: float = 3.0) -> Dict[str, Any]:
-    """One bounded HTTPS request over OS routing; ignore Windows/env proxies."""
+    """Bounded body over OS routing; the parent process enforces wall time."""
     import ipaddress
+    import json
+    deadline = time.monotonic() + timeout
     result = {"ip": "IP недоступен", "country": "", "country_code": "", "status": "unavailable"}
     try:
         with requests.Session() as session:
             session.trust_env = False
             with session.get("https://api.ipify.org?format=json", timeout=min(3.0, max(.1, timeout)),
-                             allow_redirects=False) as response:
+                             allow_redirects=False, stream=True) as response:
                 if response.status_code != 200:
                     return result
-                address = str(ipaddress.ip_address(response.json()["ip"]))
+                body = bytearray()
+                for chunk in response.iter_content(256):
+                    body.extend(chunk)
+                    if len(body) > 1024 or time.monotonic() >= deadline:
+                        return result
+                if time.monotonic() >= deadline:
+                    return result
+                address = str(ipaddress.ip_address(json.loads(body)["ip"]))
         return {"ip": address, "country": "", "country_code": "", "status": "ready"}
     except Exception:
         return result

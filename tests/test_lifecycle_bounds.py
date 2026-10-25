@@ -155,7 +155,9 @@ class BoundsTests(unittest.TestCase):
         def query(**kwargs):
             self.assertTrue(api.release_protection()['success'])
             return {'ip':'203.0.113.99','status':'ready'}
-        with patch('gui.app_webview.threading.Timer'),patch('gui.app_webview.threading.Thread',side_effect=lambda **kw:workers.append(kw['target']) or Mock()),patch('gui.app_webview.get_current_system_ip',side_effect=query):
+        api._ip_service=Mock()
+        api._ip_service.run.side_effect=lambda *args, **kwargs: query(**kwargs)
+        with patch('gui.app_webview.threading.Timer'),patch('gui.app_webview.threading.Thread',side_effect=lambda **kw:workers.append(kw['target']) or Mock()):
             api._refresh_ip_async();workers[0]()
         self.assertEqual(api.current_system_ip['status'],'unavailable');self.assertIsNone(api.connected_since)
 

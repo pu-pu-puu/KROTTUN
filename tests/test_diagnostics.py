@@ -5,6 +5,34 @@ from core.proxy_model import ProxyItem
 from gui.app_webview import ProxyTunBridgeApi, TunState
 
 class DiagnosticsTests(unittest.TestCase):
+    def test_unavailable_diagnostics_has_explicit_context_reason(self):
+        for protection, expected in [('blocked','protection_blocked'),('unknown','protection_unknown'),('unarmed','no_proxy')]:
+            api=self.bridge(); api._protection.state=protection
+            if protection=='unarmed': api.proxies=[]; api.selected_proxy_id=None
+            with patch('gui.app_webview.system_proxy_flag',return_value=False),patch('multiprocessing.get_context') as spawn:
+                self.assertTrue(api.start_diagnostics()['success'])
+                data=api.get_diagnostics()
+            self.assertEqual(data['availability_reason'],expected)
+            self.assertEqual(data['status'],'done');spawn.assert_not_called()
+            api._protection.release.assert_not_called();api._sb.stop.assert_not_called()
+
+    def test_stale_or_cancelled_diagnostic_cannot_claim_confirmed_blocking(self):
+        for change in ['generation','cancel']:
+            api=self.bridge();api._protection.state='blocked'
+            with patch('gui.app_webview.system_proxy_flag',return_value=False):api.start_diagnostics()
+            if change=='generation':api._protection.generation+=1
+            else:api.cancel_diagnostics()
+            data=api.get_diagnostics()
+            self.assertEqual(data['status'],'cancelled')
+            self.assertIsNone(data['availability_reason'])
+
+    def test_live_or_transitioning_core_does_not_claim_disconnected_blocking(self):
+        for state,running in [(TunState.STARTING,False),(TunState.IDLE,True)]:
+            api=self.bridge();api._state=state;api._sb.is_running.return_value=running
+            api._protection.state='blocked'
+            with patch('gui.app_webview.system_proxy_flag',return_value=False):api.start_diagnostics()
+            self.assertNotEqual(api.get_diagnostics()['availability_reason'],'protection_blocked')
+
     def bridge(self):
         api=ProxyTunBridgeApi.__new__(ProxyTunBridgeApi)
         api._lock=threading.RLock(); api._closing=False; api._ip_gen=1

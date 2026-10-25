@@ -32,7 +32,8 @@ def main():
         verified.append(relative)
     pyz_key=next(name for name in archive.toc if name.endswith('PYZ.pyz'))
     pyz=archive.open_embedded_archive(pyz_key)
-    for module in ('gui.app_webview','core.diagnostics','core.version','core.ping_service','core.proxy_model'):
+    for module in ('gui.app_webview','core.diagnostics','core.version','core.ping_service','core.proxy_model',
+                   'core.ip_worker','core.ip_service','core.singbox_manager','core.win_job'):
         source=ROOT/(module.replace('.','/')+'.py')
         expected=compile(source.read_bytes(),str(source),'exec',optimize=0)
         assert fingerprint(pyz.extract(module))==fingerprint(expected), module+' bytecode differs'
@@ -41,9 +42,20 @@ def main():
     import marshal
     assert fingerprint(marshal.loads(archive.extract('main')))==fingerprint(expected),'main bytecode differs'
     assert any('multiprocessing' in name for name in archive.toc),'multiprocessing hook absent'
+    import pefile
+    pe=pefile.PE(str(executable))
+    manifests=[]
+    for entry in pe.DIRECTORY_ENTRY_RESOURCE.entries:
+        if entry.id==24:
+            for resource in entry.directory.entries:
+                for language in resource.directory.entries:
+                    data=language.data.struct
+                    manifests.append(pe.get_data(data.OffsetToData,data.Size))
+    pe.close()
+    assert any(b'requireAdministrator' in manifest for manifest in manifests),'Administrator manifest absent'
     tree=ast.parse((ROOT/'core/version.py').read_text(encoding='utf-8-sig'))
     version=next(ast.literal_eval(node.value) for node in tree.body if isinstance(node,ast.Assign) and any(isinstance(target,ast.Name) and target.id=='APP_VERSION' for target in node.targets))
-    print('PASS:',', '.join(verified),'; main; multiprocessing hook')
+    print('PASS:',', '.join(verified),'; main; multiprocessing hook; requireAdministrator')
     print('Version:',version)
     print('Bytes:',executable.stat().st_size)
     print('SHA256:',hashlib.sha256(executable.read_bytes()).hexdigest())
