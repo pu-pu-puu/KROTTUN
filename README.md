@@ -13,7 +13,7 @@
 </p>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/Release-v2.4.0-blueviolet?logo=github" alt="Release v2.4.0" />
+  <img src="https://img.shields.io/badge/Release-v2.6.0-blueviolet?logo=github" alt="Release v2.6.0" />
   <img src="https://img.shields.io/badge/Platform-Windows%2010%20%7C%2011-0078D6?logo=windows" alt="Platform" />
   <img src="https://img.shields.io/badge/Python-3.10%2B-blue?logo=python" alt="Python" />
   <img src="https://img.shields.io/badge/Driver-Wintun%200.14-orange" alt="Wintun" />
@@ -49,7 +49,7 @@
 
 1. Клонируйте репозиторий:
    ```bash
-   git clone https://github.com/your-username/krottun.git
+   git clone https://github.com/pu-pu-puu/KROTTUN.git
    cd krottun
    ```
 
