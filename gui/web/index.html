@@ -1805,17 +1805,23 @@
       const pingEl = document.getElementById('cardPingBadge');
       pingEl.title = pingMeasurementLabel(p);
       pingEl.setAttribute('aria-label', pingMeasurementLabel(p));
-      if (p.latency_ms !== null && p.latency_ms !== undefined) {
-        pingEl.textContent = `${p.latency_ms} ms`;
-        pingEl.style.display = 'inline-block';
-      } else {
-        pingEl.textContent = p.last_status === 'dead' ? 'Таймаут' : '— ms';
-      }
+      pingEl.textContent = pingMeasurementText(p);
+      pingEl.style.display = 'inline-block';
     }
 
+    function legacyActivePing(p) {
+      return isConnected && activeProxy && activeProxy.id === p.id && p.latency_mode === 'tun' && p.last_status === 'dead';
+    }
+    function pingMeasurementText(p) {
+      if (legacyActivePing(p)) return 'Нет замера';
+      if (typeof p.latency_ms === 'number' && Number.isFinite(p.latency_ms)) return `${p.latency_ms} ms`;
+      if (p.latency_mode === 'tun_https') return 'Нет замера';
+      return p.last_status === 'dead' ? 'Таймаут' : '— ms';
+    }
     function pingMeasurementLabel(p) {
-      const mode = p.latency_mode === 'tun' ? 'Отклик через TUN · авторизация не проверяется' : 'TCP напрямую';
-      return mode + (p.latency_ms == null ? (p.last_status === 'dead' ? ' · Таймаут' : ' · Не проверен') : '');
+      if (legacyActivePing(p)) return 'Нет замера · предыдущая проверка адреса активного прокси через него самого не измеряла доступность интернета. Повторите HTTPS-замер.';
+      const mode = p.latency_mode === 'tun_https' ? 'HTTPS через активный туннель' : p.latency_mode === 'tun' ? 'Отклик протокола через TUN · авторизация не проверяется' : 'TCP напрямую';
+      return mode + (p.latency_ms == null ? (p.latency_mode === 'tun_https' ? ' · Нет замера' : p.last_status === 'dead' ? ' · Таймаут' : ' · Не проверен') : '');
     }
 
     function renderServersList() {
@@ -1885,7 +1891,7 @@
         ping.style.fontSize = '10px';
         ping.title = pingMeasurementLabel(p);
         ping.setAttribute('aria-label', pingMeasurementLabel(p));
-        ping.innerText = p.latency_ms !== null && p.latency_ms !== undefined ? `${p.latency_ms} ms` : p.last_status === 'dead' ? 'Таймаут' : '— ms';
+        ping.innerText = pingMeasurementText(p);
         right.appendChild(ping);
 
         const btnCopy = document.createElement('button');
@@ -2047,19 +2053,22 @@
           timer = setTimeout(() => reject(Error('Время TCP-замера истекло. Повторите попытку.')), 10000);
         })]);
         if (!res || res.success !== true) throw Error(res && res.error || 'Нет ответа на TCP-замер');
-        const mode = res.mode === 'tun' ? 'Отклик через TUN' : 'TCP напрямую';
+        const hasHttps = res.mode === 'tun_https' || (Array.isArray(res.results) && res.results.some(r => r.mode === 'tun_https'));
+        const mode = res.mode === 'tun_https' ? 'HTTPS через активный туннель' : hasHttps ? 'HTTPS через активный туннель; остальные — отклик протокола через TUN' : res.mode === 'tun' ? 'Отклик протокола через TUN' : 'TCP напрямую';
         if (Array.isArray(res.proxies)) { proxyList = res.proxies; renderServersList(); }
         if (!all && selectedProxy && selectedProxy.id === selectedId) {
           const valid = typeof res.latency === 'number' && Number.isFinite(res.latency) && res.latency >= 0;
           selectedProxy.latency_ms = valid ? res.latency : null;
-          selectedProxy.latency_mode = res.mode === 'tun' ? 'tun' : 'tcp';
+          selectedProxy.latency_mode = res.mode === 'tun_https' ? 'tun_https' : res.mode === 'tun' ? 'tun' : 'tcp';
+          selectedProxy.last_status = res.status === 'alive' ? 'alive' : res.status === 'timeout' ? 'dead' : 'unknown';
           const badge = document.getElementById('cardPingBadge');
-          badge.textContent = valid ? `${res.latency} ms` : res.status === 'timeout' ? 'Таймаут' : 'Не проверен';
-          badge.title = mode;
+          badge.textContent = res.status === 'notchecked' && res.mode !== 'tun_https' ? 'Не проверен' : pingMeasurementText(selectedProxy);
+          badge.title = pingMeasurementLabel(selectedProxy);
+          badge.setAttribute('aria-label', badge.title);
         }
         const rows = Array.isArray(res.results) ? res.results : [];
         const passed = rows.filter(r => r.status === 'alive').length;
-        showToast(`${mode}: ${passed}/${rows.length} ответили. Таймаут не подтверждает доступность.`);
+        showToast(`${mode}: ${passed}/${rows.length} ответили. Нет замера не означает отказ туннеля.`);
       } catch (err) {
         showToast(err.message || 'Не удалось выполнить TCP-замер');
       } finally {

@@ -12,6 +12,7 @@ class PingControlsTests(unittest.TestCase):
         a.proxies=[ProxyItem('one','proxy.invalid',1080,password='secret')]; a.selected_proxy_id='one'
         a._protection=Mock(state='protected' if protected else 'unarmed',generation=1,cancel=threading.Event(),cache={'one':'192.0.2.1'},cache_hosts={'one':'proxy.invalid'})
         a._sb=Mock(process=object() if protected else None,proxy_reachable=protected)
+        a._sb.active_proxy=None
         a._sb.is_running.return_value=protected
         a._save=Mock()
         return a
@@ -23,7 +24,7 @@ class PingControlsTests(unittest.TestCase):
             result=a.ping_proxy('one')
         self.assertTrue(result['success']); self.assertEqual(result['mode'],'tun')
         self.assertEqual(a.proxies[0].latency_ms,15)
-        self.assertEqual(service.return_value.run.call_args.args[1],[{'id':'one','host':'192.0.2.1','port':1080,'protocol':'socks5'}])
+        self.assertEqual(service.return_value.run.call_args.args[1],[{'id':'one','host':'192.0.2.1','port':1080,'protocol':'socks5','active':False}])
 
     def test_blocked_unknown_transition_do_not_start(self):
         for state in ['blocked','unknown','connecting','switching']:
@@ -148,3 +149,91 @@ class PingControlsTests(unittest.TestCase):
             service.return_value.run.side_effect=run
             self.assertTrue(a.ping_all()['success'])
         self.assertIsNone(a.proxies[0].latency_ms);self.assertEqual(a.proxies[0].last_status,'dead')
+    def test_active_http_uses_https_never_self_socket(self):
+        from core.ping_service import perform_pings
+        from unittest.mock import MagicMock
+        target={'id':'one','host':'192.0.2.1','port':8080,'protocol':'http','active':True}
+        session=MagicMock();session.__enter__.return_value=session
+        response=MagicMock();response.__enter__.return_value=response;response.status_code=204
+        response.iter_content.return_value=iter([]);session.get.return_value=response
+        connect=Mock(side_effect=AssertionError('must not self-connect'));rows=[]
+        perform_pings([target],10,rows.append,connect,lambda:0,mode='tun',session_factory=lambda:session)
+        connect.assert_not_called();self.assertEqual(rows,[('one',0,'alive')])
+        self.assertFalse(session.trust_env)
+        call=session.get.call_args
+        self.assertEqual(call.args[0],'https://cp.cloudflare.com/generate_204')
+        self.assertFalse(call.kwargs['allow_redirects']);self.assertTrue(call.kwargs['stream'])
+        self.assertGreater(call.kwargs['timeout'],0);self.assertLessEqual(call.kwargs['timeout'],10)
+
+    def test_active_https_failure_is_unavailable(self):
+        from core.ping_service import perform_pings
+        from unittest.mock import MagicMock
+        for status in [200,302,500,None]:
+            session=MagicMock();session.__enter__.return_value=session
+            response=MagicMock();response.__enter__.return_value=response;response.status_code=status
+            session.get.return_value=response
+            if status is None:session.get.side_effect=TimeoutError()
+            rows=[];connect=Mock()
+            perform_pings([{'id':'one','active':True}],10,rows.append,connect,lambda:0,mode='tun',session_factory=lambda:session)
+            self.assertEqual(rows,[('one',None,'unavailable')]);connect.assert_not_called();self.assertEqual(session.get.call_count,2)
+
+    def test_actual_active_not_selected_controls_measurement_mode(self):
+        a=self.bridge();reserve=ProxyItem('reserve','reserve.invalid',80,'http')
+        a.proxies.append(reserve);a.selected_proxy_id='reserve';a._sb.active_proxy=a.proxies[0]
+        with patch('gui.app_webview.PingService',create=True) as service:
+            service.return_value.run.return_value={'success':True,'mode':'tun','results':[{'id':'one','latency':5,'status':'alive'},{'id':'reserve','latency':None,'status':'timeout'}]}
+            result=a.ping_all()
+        targets=service.return_value.run.call_args.args[1]
+        self.assertTrue(targets[0]['active']);self.assertFalse(targets[1]['active'])
+        self.assertEqual(a.proxies[0].latency_mode,'tun_https');self.assertEqual(reserve.latency_mode,'tun')
+        self.assertEqual(result['results'][0]['mode'],'tun_https')
+        self.assertTrue(a._sb.proxy_reachable)
+    def test_active_unavailable_does_not_mark_dead_or_change_health(self):
+        a=self.bridge();a._sb.active_proxy=a.proxies[0]
+        with patch('gui.app_webview.PingService',create=True) as service:
+            service.return_value.run.return_value={'success':True,'mode':'tun','results':[{'id':'one','latency':None,'status':'unavailable'}]}
+            result=a.ping_proxy('one')
+        self.assertEqual(result['mode'],'tun_https');self.assertEqual(result['status'],'unavailable')
+        self.assertEqual(a.proxies[0].last_status,'unknown');self.assertEqual(a.proxies[0].latency_mode,'tun_https')
+        self.assertTrue(a._sb.proxy_reachable);a._protection.connect.assert_not_called();a._protection.release.assert_not_called()
+
+    def test_active_https_body_limit_and_no_request_after_deadline(self):
+        from core.ping_service import perform_pings
+        from unittest.mock import MagicMock
+        session=MagicMock();session.__enter__.return_value=session
+        response=MagicMock();response.__enter__.return_value=response;response.status_code=204
+        response.iter_content.side_effect=lambda *args:iter([b'x'*1025]);session.get.return_value=response
+        rows=[];perform_pings([{'id':'one','active':True}],10,rows.append,Mock(),lambda:0,mode='tun',session_factory=lambda:session)
+        self.assertEqual(rows,[('one',None,'unavailable')])
+        session.reset_mock();rows=[]
+        perform_pings([{'id':'one','active':True}],0,rows.append,Mock(),lambda:0,mode='tun',session_factory=lambda:session)
+        session.get.assert_not_called();self.assertEqual(rows,[])
+    def test_active_identity_or_id_change_invalidates_context(self):
+        for change in ['replacement','id']:
+            a=self.bridge();a._sb.active_proxy=a.proxies[0]
+            context,_=a._ping_context();self.assertTrue(a._ping_valid(context))
+            if change=='replacement':a._sb.active_proxy=ProxyItem('one','proxy.invalid',1080)
+            else:a._sb.active_proxy.id='changed'
+            self.assertFalse(a._ping_valid(context))
+    def test_active_https_fallback_same_route_reports_successful_attempt(self):
+        from core.ping_service import perform_pings
+        from unittest.mock import MagicMock
+        session=MagicMock();session.__enter__.return_value=session
+        response=MagicMock();response.__enter__.return_value=response;response.status_code=204
+        response.iter_content.return_value=iter([])
+        now=[0];attempts=[]
+        def request(url,**kwargs):
+            attempts.append(url)
+            if len(attempts)==1:
+                now[0]=3
+                raise TimeoutError()
+            now[0]=3.05
+            return response
+        session.get.side_effect=request
+        rows=[];connect=Mock()
+        perform_pings([{'id':'one','active':True}],8,rows.append,connect,lambda:now[0],mode='tun',session_factory=lambda:session)
+        self.assertEqual(rows,[('one',50,'alive')]);connect.assert_not_called()
+        self.assertEqual([c.args[0] for c in session.get.call_args_list],['https://cp.cloudflare.com/generate_204','https://www.gstatic.com/generate_204'])
+        for call in session.get.call_args_list:
+            self.assertFalse(call.kwargs['allow_redirects']);self.assertTrue(call.kwargs['stream'])
+        self.assertFalse(session.trust_env)

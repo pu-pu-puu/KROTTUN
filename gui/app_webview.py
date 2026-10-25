@@ -911,12 +911,14 @@ class ProxyTunBridgeApi:
 
     def _ping_context(self):
         context, mode, _ = self._diagnostic_context()
-        return context + (self.selected_proxy_id,), 'tun' if mode == 'protected' else ('direct' if mode == 'proxy' else None)
+        active=getattr(self._sb, 'active_proxy', None)
+        return context + (self.selected_proxy_id, active, active.id if active is not None else None), 'tun' if mode == 'protected' else ('direct' if mode == 'proxy' else None)
 
     def _ping_valid(self, context):
         with self._lock:
             current, mode = self._ping_context()
-            return (mode is not None and current[:-2] == context[:-2]
+            return (mode is not None and current[:-4] == context[:-4]
+                    and current[-4] is context[-4] and current[-3] == context[-3]
                     and current[-2] is context[-2] and current[-1] == context[-1]
                     and current[2] is context[2])
 
@@ -932,6 +934,8 @@ class ProxyTunBridgeApi:
             originals = [p for p in self.proxies if proxy_id is None or p.id == proxy_id]
             if not originals: return {'success':False,'error':'Сервер не найден'}
             targets=[]
+            active=getattr(self._sb, 'active_proxy', None)
+            active_id=active.id if active is not None else None
             for item in originals:
                 host=item.host
                 if mode == 'tun' and self._protection.cache_hosts.get(item.id) == host:
@@ -940,7 +944,7 @@ class ProxyTunBridgeApi:
                         import ipaddress
                         try: host=str(ipaddress.ip_address(cached))
                         except ValueError: pass
-                targets.append({'id':item.id,'host':host,'port':item.port,'protocol':item.protocol})
+                targets.append({'id':item.id,'host':host,'port':item.port,'protocol':item.protocol,'active':mode=='tun' and item.id==active_id})
             if not hasattr(self, '_pings'): self._pings=PingService(self._ping_valid)
             service=self._pings
         # Process/socket waits must never hold the bridge lock.
@@ -950,14 +954,16 @@ class ProxyTunBridgeApi:
                 return {'success':False,'error':'Состояние подключения изменилось. Повторите замер.'}
             if not result.get('success'): return result
             by_id={p.id:p for p in originals}
+            target_modes={t['id']:'tun_https' if mode=='tun' and t['active'] else ('tun' if mode=='tun' else 'tcp') for t in targets}
             if proxy_id is not None and not any(p is originals[0] for p in self.proxies):
                 return {'success':False,'error':'Сервер изменён или удалён. Повторите замер.'}
             for row in result['results']:
+                row['mode']=target_modes[row['id']]
                 original=by_id.get(row['id'])
                 current=next((p for p in self.proxies if p.id==row['id']),None)
                 if current is original:
                     current.latency_ms=row['latency']
-                    current.latency_mode='tun' if mode=='tun' else 'tcp'
+                    current.latency_mode=row['mode']
                     current.last_status='alive' if row['status']=='alive' else ('dead' if row['status']=='timeout' else 'unknown')
                 else:
                     row.update(latency=None,status='notchecked')
@@ -967,7 +973,7 @@ class ProxyTunBridgeApi:
             response['proxies']=[self._proxy_to_dict(p) for p in self.proxies]
             if proxy_id is not None:
                 row=next((r for r in result['results'] if r['id']==proxy_id),{})
-                response.update(latency=row.get('latency'),status=row.get('status','notchecked'))
+                response.update(latency=row.get('latency'),status=row.get('status','notchecked'),mode=row.get('mode',mode))
             return response
 
     def ping_proxy(self, proxy_id: str) -> Dict[str, Any]:

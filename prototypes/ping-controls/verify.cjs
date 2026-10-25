@@ -45,5 +45,15 @@ for(const status of ['unknown','notchecked']){
  assert.equal(await page.locator('#cardPingBadge').innerText(),'\u2014 ms');
  assert.match(await page.locator('#cardPingBadge').getAttribute('title'),/TUN/);
 }
+await page.evaluate(()=>{activeProxy={id:selectedProxy.id};isConnected=true;selectedProxy.latency_mode='tun';selectedProxy.last_status='dead';updateSelectedServerCard();proxyList[0]=selectedProxy;renderServersList()});
+assert.equal(await page.locator('#cardPingBadge').innerText(),'\u041d\u0435\u0442 \u0437\u0430\u043c\u0435\u0440\u0430');
+assert.equal(await page.locator('.item-right .ping-badge').first().innerText(),'\u041d\u0435\u0442 \u0437\u0430\u043c\u0435\u0440\u0430');
+for(const latency of [null,42]){
+ await page.evaluate(latency=>{selectedProxy.latency_mode='tun_https';selectedProxy.latency_ms=latency;selectedProxy.last_status=latency===null?'unknown':'alive';updateSelectedServerCard()},latency);
+ assert.equal(await page.locator('#cardPingBadge').innerText(),latency===null?'\u041d\u0435\u0442 \u0437\u0430\u043c\u0435\u0440\u0430':'42 ms');
+ assert.match(await page.locator('#cardPingBadge').getAttribute('title'),/HTTPS/);
+}
+await page.evaluate(()=>{activeProxy={id:'other'};selectedProxy.latency_mode='tun';selectedProxy.latency_ms=null;selectedProxy.last_status='dead';updateSelectedServerCard()});
+assert.equal(await page.locator('#cardPingBadge').innerText(),'\u0422\u0430\u0439\u043c\u0430\u0443\u0442');
 console.log('PASS selected card refresh preserves timeout/unknown and measurement mode; geometry 480/520 selected/active SOCKS5/HTTP 9999ms/unknown; bridge exceptions/rejection/undefined/all-timeout/hang/singleflight/finally; mixed stored modes; external requests aborted');
 }finally{await browser.close()}})().catch(e=>{console.error(e);process.exitCode=1});

@@ -5,16 +5,45 @@ import multiprocessing
 import socket
 import threading
 import time
+import requests
 from concurrent.futures import ThreadPoolExecutor
 from types import SimpleNamespace
 from core.win_job import bind_to_lifetime
 
 
-def perform_pings(targets, deadline, emit, connect=socket.create_connection, clock=time.monotonic, mode='direct'):
+def perform_pings(targets, deadline, emit, connect=socket.create_connection, clock=time.monotonic, mode='direct', session_factory=requests.Session):
     def check(target):
         remaining=min(2.5, deadline-clock())
         if remaining<=0: return
         started=clock()
+        if mode == 'tun' and target.get('active'):
+            try:
+                # Both fixed HTTPS controls use the same active OS TUN route.
+                # Failed attempts consume the batch budget, not displayed latency.
+                with session_factory() as session:
+                    session.trust_env=False
+                    for url in ('https://cp.cloudflare.com/generate_204',
+                                'https://www.gstatic.com/generate_204'):
+                        attempt_started=clock()
+                        remaining=deadline-attempt_started
+                        if remaining<=0: break
+                        try:
+                            with session.get(url,timeout=min(3.5,remaining),
+                                    allow_redirects=False,stream=True) as response:
+                                if response.status_code!=204: raise ValueError()
+                                size=0
+                                for chunk in response.iter_content(256):
+                                    size+=len(chunk)
+                                    if size>1024 or clock()>=deadline: raise ValueError()
+                            if clock()>=deadline: break
+                            emit((target['id'],max(0,round((clock()-attempt_started)*1000)),'alive'))
+                            return
+                        except Exception:
+                            continue
+            except Exception:
+                pass
+            emit((target['id'],None,'unavailable'))
+            return
         try:
             with connect((target['host'],target['port']),timeout=remaining) as sock:
                 if mode == 'tun':
@@ -94,7 +123,7 @@ class PingService:
             if self._busy or self._process is not None:
                 return {'success':False,'busy':True,'error':'Замер уже выполняется или процесс ещё завершается'}
             self._busy=True; self._cancel.clear(); self._done.clear()
-        rows={t['id']:{'id':t['id'],'latency':None,'status':'notchecked'} for t in targets}
+        rows={t['id']:{'id':t['id'],'latency':None,'status':'notchecked','mode':'tun_https' if mode=='tun' and t.get('active') else ('tun' if mode=='tun' else 'tcp')} for t in targets}
         receiver=sender=process=None; exited=True; error=None
         deadline=self._clock()+8
         def valid(): return not self._cancel.is_set() and self._valid(context)
@@ -115,7 +144,7 @@ class PingService:
                     except EOFError: break
                     if not isinstance(message,tuple) or len(message)!=3: continue
                     key,latency,status=message
-                    if key not in rows or status not in ('alive','timeout'): continue
+                    if key not in rows or status not in ('alive','timeout','unavailable'): continue
                     if status=='alive' and (isinstance(latency,bool) or not isinstance(latency,(int,float)) or not math.isfinite(latency) or latency<0): continue
                     if not valid(): break
                     rows[key].update(latency=latency if status=='alive' else None,status=status)
